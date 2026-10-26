@@ -95,7 +95,7 @@ Event::listen(function (SyncJobDeadLettered $e) {
 
 | Event | When |
 | --- | --- |
-| `SyncJobCompleted` | Job completed. `externalObjectId` is the QuickBooks ID (the job's `result.external_id`). |
+| `SyncJobCompleted` | Job completed. `externalObjectId` is the QuickBooks ID from the job's published `result`. |
 | `SyncJobDeadLettered` | Terminal failure. Read `lastErrorCode`; reconcile. |
 | `SyncJobFailed` | `failed` or `cancelled`, seen by polling. |
 | `SyncJobResolved` | An operator closed the job manually. |

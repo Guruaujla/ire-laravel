@@ -88,7 +88,8 @@ Every operation has a method: `createInvoice`, `updateInvoice`, `voidInvoice`,
 `createPayment`, `createRefund`, `createCreditMemo`, `applyCreditMemo`, and
 `upsertMaster` (Customer and Item). There are also reads: `findMaster`,
 `getMasterMapping` and `status`. Payload shapes, with one validator-checked example per operation,
-are in the runtime's `quickbooks-operations.md` and `quickbooks-operations.json`.
+are in this package's [`docs/quickbooks-operations.md`](docs/quickbooks-operations.md) and
+[`docs/quickbooks-operations.json`](docs/quickbooks-operations.json).
 
 ## Results as events
 

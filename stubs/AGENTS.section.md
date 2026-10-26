@@ -2,6 +2,8 @@
 
 QuickBooks sync goes through `ezee/laravel-integration-runtime`; never call the
 QuickBooks API directly. Full rules: `.claude/skills/quickbooks-integration-runtime/SKILL.md`.
+Payload examples for every operation: `quickbooks-operations.md` and `.json` in
+that folder.
 
 - Use `IntegrationRuntime::quickbooks()` methods; they set recipe identities.
 - One stable `idempotency_key` per business event, persisted before the first

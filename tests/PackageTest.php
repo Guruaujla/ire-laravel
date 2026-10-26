@@ -123,5 +123,7 @@ final class PackageTest extends TestCase
         self::assertSame(1, substr_count($agents, 'integration-runtime:agent-rules:start'));
         self::assertStringContainsString('idempotency_key', $agents);
         self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/SKILL.md');
+        self::assertJson((string) file_get_contents($base . '/.claude/skills/quickbooks-integration-runtime/quickbooks-operations.json'));
+        self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/quickbooks-operations.md');
     }
 }

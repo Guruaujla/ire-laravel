@@ -1,0 +1,515 @@
+{
+  "format_version": 1,
+  "notice": "Fictional offline examples. IDs, rates and amounts are synthetic; use the connected company's real approved references. A valid example is not evidence that an operation is enabled for your app.",
+  "operations": {
+    "quickbooks.invoice.create": {
+      "summary": "Create a CAD, tax-exclusive Invoice from existing native Customer, Item and TaxCode references.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.invoice.created",
+        "recipe_version": 5,
+        "trigger_type": "erp.invoice.created",
+        "object_type": "invoice",
+        "internal_object_id": "erp_invoice_example_001",
+        "idempotency_key": "erp_invoice_example_001:quickbooks:create",
+        "payload": {
+          "invoice": {
+            "DocNumber": "erp_invoice_example_001",
+            "CustomerRef": {
+              "value": "123"
+            },
+            "GlobalTaxCalculation": "TaxExcluded",
+            "Line": [
+              {
+                "Amount": 100,
+                "DetailType": "SalesItemLineDetail",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "value": "456"
+                  },
+                  "TaxCodeRef": {
+                    "value": "TAX"
+                  },
+                  "Qty": 1,
+                  "UnitPrice": 100
+                }
+              }
+            ]
+          },
+          "tax_declarations": [
+            {
+              "line_index": 0,
+              "treatment": "taxable"
+            }
+          ],
+          "invoice_verification": {
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "789",
+                "tax_percent": "13",
+                "net_amount_taxable": "100.00",
+                "amount": "13.00"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "quickbooks.invoice.update_sparse": {
+      "summary": "Sparse-update an open, unpaid Invoice. Keep every existing line Id, ItemRef and TaxCodeRef; send the current SyncToken.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.invoice.updated",
+        "recipe_version": 1,
+        "trigger_type": "erp.invoice.updated",
+        "object_type": "invoice_update",
+        "internal_object_id": "CHANGE-001",
+        "idempotency_key": "erp_invoice_101:update:CHANGE-001",
+        "payload": {
+          "original_invoice": {
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "customer_ref": "7",
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "10.00",
+            "total_amount": "110.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "100.00",
+                "amount": "10.00"
+              }
+            ]
+          },
+          "invoice": {
+            "Id": "101",
+            "SyncToken": "2",
+            "sparse": true,
+            "CustomerRef": {
+              "value": "7"
+            },
+            "GlobalTaxCalculation": "TaxExcluded",
+            "Line": [
+              {
+                "Id": "1",
+                "Amount": "200.00",
+                "DetailType": "SalesItemLineDetail",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "value": "12"
+                  },
+                  "TaxCodeRef": {
+                    "value": "3"
+                  },
+                  "Qty": "20",
+                  "UnitPrice": "10.00"
+                }
+              }
+            ],
+            "TxnDate": "2026-10-05",
+            "DueDate": "2026-10-19"
+          },
+          "tax_declarations": [
+            {
+              "line_index": 0,
+              "treatment": "taxable"
+            }
+          ],
+          "invoice_verification": {
+            "currency": "CAD",
+            "net_amount": "200.00",
+            "total_tax": "20.00",
+            "total_amount": "220.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "200.00",
+                "amount": "20.00"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "quickbooks.invoice.void": {
+      "summary": "Void an unpaid, unlinked Invoice with its current SyncToken. A stale token is a conflict; never refetch and retry automatically.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.invoice.voided",
+        "recipe_version": 1,
+        "trigger_type": "erp.invoice.voided",
+        "object_type": "invoice_void",
+        "internal_object_id": "VOID-101",
+        "idempotency_key": "erp_invoice_101:void",
+        "payload": {
+          "original_invoice": {
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "customer_ref": "7",
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "10.00",
+            "total_amount": "110.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "100.00",
+                "amount": "10.00"
+              }
+            ]
+          },
+          "invoice_void": {
+            "Id": "101",
+            "SyncToken": "2"
+          }
+        }
+      }
+    },
+    "quickbooks.payment.create": {
+      "summary": "Record a positive CAD accounting receipt against one linked Invoice. Does not charge a card or move money.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.payment.created",
+        "recipe_version": 2,
+        "trigger_type": "erp.payment.created",
+        "object_type": "payment",
+        "internal_object_id": "receipt-001",
+        "idempotency_key": "erp_payment_receipt-001",
+        "payload": {
+          "payment": {
+            "CustomerRef": {
+              "value": "7"
+            },
+            "TotalAmt": "40.00",
+            "CurrencyRef": {
+              "value": "CAD"
+            },
+            "DepositToAccountRef": {
+              "value": "20"
+            },
+            "PaymentMethodRef": {
+              "value": "30"
+            },
+            "TxnDate": "2026-10-02"
+          },
+          "linked_invoice": {
+            "internal_id": "erp_invoice_101",
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "sync_token": "1",
+            "expected_balance": "110.00"
+          }
+        }
+      }
+    },
+    "quickbooks.refund.create": {
+      "summary": "Record an accounting RefundReceipt against an original sale and its positive-cash Payment. Does not process a card refund.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.refund.created",
+        "recipe_version": 3,
+        "trigger_type": "erp.refund.created",
+        "object_type": "refund_receipt",
+        "internal_object_id": "RETURN-001",
+        "idempotency_key": "erp_refund_return-001",
+        "payload": {
+          "refund": {
+            "DocNumber": "RETURN-001",
+            "CustomerRef": {
+              "value": "7"
+            },
+            "GlobalTaxCalculation": "TaxExcluded",
+            "DepositToAccountRef": {
+              "value": "35"
+            },
+            "PaymentMethodRef": {
+              "value": "30"
+            },
+            "Line": [
+              {
+                "Amount": "10.00",
+                "DetailType": "SalesItemLineDetail",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "value": "12"
+                  },
+                  "TaxCodeRef": {
+                    "value": "3"
+                  },
+                  "Qty": "1",
+                  "UnitPrice": "10.00"
+                }
+              }
+            ]
+          },
+          "tax_declarations": [
+            {
+              "line_index": 0,
+              "treatment": "taxable"
+            }
+          ],
+          "adjustment_verification": {
+            "currency": "CAD",
+            "net_amount": "10.00",
+            "total_tax": "1.00",
+            "total_amount": "11.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "10.00",
+                "amount": "1.00"
+              }
+            ]
+          },
+          "source_return_id": "return-001",
+          "original_payment": {
+            "external_id": "301"
+          },
+          "original_invoice": {
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "customer_ref": "7",
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "10.00",
+            "total_amount": "110.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "100.00",
+                "amount": "10.00"
+              }
+            ]
+          },
+          "allocations": [
+            {
+              "original_line_id": "1",
+              "document_line_index": 0,
+              "net_amount": "10.00"
+            }
+          ]
+        }
+      }
+    },
+    "quickbooks.credit_memo.create": {
+      "summary": "Create customer credit against an original Invoice's lines.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.credit_memo.created",
+        "recipe_version": 1,
+        "trigger_type": "erp.credit_memo.created",
+        "object_type": "credit_memo",
+        "internal_object_id": "RETURN-001",
+        "idempotency_key": "erp_credit_RETURN-001",
+        "payload": {
+          "credit_memo": {
+            "DocNumber": "RETURN-001",
+            "CustomerRef": {
+              "value": "7"
+            },
+            "GlobalTaxCalculation": "TaxExcluded",
+            "Line": [
+              {
+                "Amount": "10.00",
+                "DetailType": "SalesItemLineDetail",
+                "SalesItemLineDetail": {
+                  "ItemRef": {
+                    "value": "12"
+                  },
+                  "TaxCodeRef": {
+                    "value": "3"
+                  },
+                  "Qty": "1",
+                  "UnitPrice": "10.00"
+                }
+              }
+            ]
+          },
+          "tax_declarations": [
+            {
+              "line_index": 0,
+              "treatment": "taxable"
+            }
+          ],
+          "adjustment_verification": {
+            "currency": "CAD",
+            "net_amount": "10.00",
+            "total_tax": "1.00",
+            "total_amount": "11.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "10.00",
+                "amount": "1.00"
+              }
+            ]
+          },
+          "source_return_id": "return-001",
+          "original_invoice": {
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "customer_ref": "7",
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "10.00",
+            "total_amount": "110.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "100.00",
+                "amount": "10.00"
+              }
+            ]
+          },
+          "allocations": [
+            {
+              "original_line_id": "1",
+              "document_line_index": 0,
+              "net_amount": "10.00"
+            }
+          ]
+        }
+      }
+    },
+    "quickbooks.credit_memo.apply": {
+      "summary": "Apply an existing CreditMemo to the original Invoice as a zero-cash Payment with an equal Invoice/CreditMemo pair.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.credit_memo.applied",
+        "recipe_version": 1,
+        "trigger_type": "erp.credit_memo.applied",
+        "object_type": "credit_application",
+        "internal_object_id": "APPLY-001",
+        "idempotency_key": "erp_credit_apply_APPLY-001",
+        "payload": {
+          "original_invoice": {
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "customer_ref": "7",
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "10.00",
+            "total_amount": "110.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "100.00",
+                "amount": "10.00"
+              }
+            ]
+          },
+          "credit_application": {
+            "CustomerRef": {
+              "value": "7"
+            },
+            "TotalAmt": 0,
+            "Line": [
+              {
+                "Amount": "11.00",
+                "LinkedTxn": [
+                  {
+                    "TxnId": "101",
+                    "TxnType": "Invoice"
+                  }
+                ]
+              },
+              {
+                "Amount": "11.00",
+                "LinkedTxn": [
+                  {
+                    "TxnId": "202",
+                    "TxnType": "CreditMemo"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "quickbooks.customer.upsert": {
+      "summary": "Create or update a CAD Customer by ERP id; returns a stable mapping.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.customer.sync",
+        "recipe_version": 1,
+        "trigger_type": "erp.customer.sync",
+        "object_type": "master_customer_command",
+        "internal_object_id": "cust-cmd-001",
+        "idempotency_key": "master:1234567890:Customer:cust-cmd-001",
+        "payload": {
+          "master": {
+            "command_id": "cust-cmd-001",
+            "erp_id": "erp_customer_7",
+            "action": "create",
+            "expected_company_id": "1234567890",
+            "entity_type": "Customer",
+            "record": {
+              "name": "Example Customer Ltd",
+              "email": "ap@example.com",
+              "currency": "CAD"
+            }
+          }
+        }
+      }
+    },
+    "quickbooks.item.upsert": {
+      "summary": "Create or update a Service Item by ERP id; returns a stable mapping.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.item.sync",
+        "recipe_version": 1,
+        "trigger_type": "erp.item.sync",
+        "object_type": "master_item_command",
+        "internal_object_id": "item-cmd-001",
+        "idempotency_key": "master:1234567890:Item:item-cmd-001",
+        "payload": {
+          "master": {
+            "command_id": "item-cmd-001",
+            "erp_id": "erp_item_12",
+            "action": "create",
+            "expected_company_id": "1234567890",
+            "entity_type": "Item",
+            "record": {
+              "name": "Consulting hour",
+              "item_type": "Service",
+              "income_account_id": "79",
+              "unit_price_minor": 10000
+            }
+          }
+        }
+      }
+    }
+  }
+}

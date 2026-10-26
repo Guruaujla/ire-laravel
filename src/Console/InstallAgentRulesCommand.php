@@ -30,7 +30,10 @@ final class InstallAgentRulesCommand extends Command
         } else {
             $files->ensureDirectoryExists(dirname($skill));
             $files->put($skill, $files->get($stubs . '/SKILL.md'));
-            $this->info('Wrote ' . $skill);
+            foreach (['quickbooks-operations.md', 'quickbooks-operations.json'] as $doc) {
+                $files->copy(dirname(__DIR__, 2) . '/docs/' . $doc, dirname($skill) . '/' . $doc);
+            }
+            $this->info('Wrote ' . $skill . ' and the operation reference');
         }
 
         $agents = base_path('AGENTS.md');

@@ -17,8 +17,9 @@ tokens and handles rate limits, duplicate protection and tax verification.
   `IntegrationRuntime::quickbooks()`; they fill recipe key, version, trigger and
   object type for you. Do not hand-write those.
 - Payload shapes, with one valid example per operation:
-  `quickbooks-operations.md` and `quickbooks-operations.json` in the runtime's
-  developer docs (`docs-site/content/` in the runtime repo). Copy the shape and
+  [`quickbooks-operations.md`](quickbooks-operations.md) and
+  [`quickbooks-operations.json`](quickbooks-operations.json) next to this file
+  (also in `vendor/ezee/laravel-integration-runtime/docs/`). Copy the shape and
   replace the IDs with the connected company's real references.
 - Supported scope: CAD companies, tax-exclusive lines, existing `TaxCodeRef`.
   Omit `CurrencyRef` on invoices. Never send `TxnTaxDetail`.

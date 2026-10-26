@@ -8,6 +8,7 @@ use Ezee\IntegrationRuntime\Laravel\Events\SyncJobCompleted;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobDeadLettered;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
 use Ezee\IntegrationRuntime\Signer;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 
@@ -105,5 +106,21 @@ final class WebhookTest extends TestCase
         Event::fake();
         $this->deliver(self::body('dlv_4'))->assertOk();
         Event::assertDispatched(SyncJobCompleted::class);
+    }
+
+    public function test_delivery_in_progress_is_not_acknowledged(): void
+    {
+        Event::fake();
+        // A worker holds the claim (still running, or killed before finishing).
+        Cache::add('integration-runtime:webhook-claim:dlv_5', 1, 120);
+        $this->deliver(self::body('dlv_5'))->assertStatus(429);
+        Event::assertNotDispatched(SyncJobCompleted::class);
+
+        // Once the claim is gone the retry is processed, then deduped.
+        Cache::forget('integration-runtime:webhook-claim:dlv_5');
+        $this->deliver(self::body('dlv_5'))->assertOk();
+        $this->deliver(self::body('dlv_5'))->assertOk();
+        Event::assertDispatchedTimes(SyncJobCompleted::class, 1);
+        self::assertFalse(Cache::has('integration-runtime:webhook-claim:dlv_5'));
     }
 }

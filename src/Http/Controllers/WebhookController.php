@@ -46,8 +46,18 @@ final class WebhookController
 
         $store = $cache->store(self::stringOrNull($config->get('integration-runtime.webhooks.cache_store')));
         $ttl = (int) $config->get('integration-runtime.webhooks.dedupe_ttl_seconds', 604800);
-        if (! $store->add('integration-runtime:webhook:' . $event->deliveryId, 1, $ttl)) {
+        $claimTtl = (int) $config->get('integration-runtime.webhooks.claim_ttl_seconds', 120);
+        $done = 'integration-runtime:webhook:' . $event->deliveryId;
+        $claim = 'integration-runtime:webhook-claim:' . $event->deliveryId;
+
+        // Acknowledge only work that finished. A delivery still being handled
+        // (or whose worker died mid-way) holds a short claim and gets a 429,
+        // which the runtime retries; the claim expires if the worker is gone.
+        if ($store->has($done)) {
             return new Response('', 200);
+        }
+        if (! $store->add($claim, 1, $claimTtl)) {
+            return new Response('', 429);
         }
 
         try {
@@ -62,9 +72,12 @@ final class WebhookController
             }
         } catch (\Throwable $e) {
             // Let the runtime retry this delivery rather than lose it.
-            $store->forget('integration-runtime:webhook:' . $event->deliveryId);
+            $store->forget($claim);
             throw $e;
         }
+
+        $store->put($done, 1, $ttl);
+        $store->forget($claim);
 
         return new Response('', 200);
     }

@@ -29,6 +29,11 @@ return [
         // Deliveries are at-least-once. A delivery_id seen within this window
         // is acknowledged without firing events again.
         'dedupe_ttl_seconds' => 7 * 24 * 3600,
+
+        // While a delivery is being handled it holds a claim; a concurrent or
+        // repeated delivery gets 429 (retried later) instead of a false 200.
+        // Keep it above your longest listener run; it frees a dead worker's claim.
+        'claim_ttl_seconds' => 120,
         'cache_store' => env('INTEGRATION_RUNTIME_WEBHOOK_CACHE'),
 
         // Extra route middleware. Do not add CSRF or session middleware.

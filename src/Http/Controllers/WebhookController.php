@@ -67,14 +67,12 @@ final class WebhookController
             $jobId = $event->jobId();
             $status = $event->job['status'] ?? null;
             if ($jobId !== null && is_string($status)) {
-                // The webhook snapshot carries no `result`, which is where the
-                // QuickBooks ID is published: read the job for a completion.
-                $snapshot = $event->job;
-                if ($status === 'completed') {
-                    $snapshot = $jobs->find($event->tenantId, $jobId)->raw;
-                    $status = is_string($snapshot['status'] ?? null) ? $snapshot['status'] : $status;
-                }
-                $finished = Factory::forStatus($event->tenantId, $jobId, $status, 'webhook', $snapshot);
+                // Fire from the job as it is now, not the delivery's frozen
+                // snapshot: the snapshot has no `result` (where the QuickBooks
+                // ID is published), and a delayed delivery can be older than
+                // the job (dead_lettered, then manually_resolved).
+                $current = $jobs->find($event->tenantId, $jobId);
+                $finished = Factory::forStatus($event->tenantId, $jobId, $current->status, 'webhook', $current->raw);
                 if ($finished !== null) {
                     $events->dispatch($finished);
                 }

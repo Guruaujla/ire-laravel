@@ -27,11 +27,21 @@ final class WebhookTest extends TestCase
             'data' => ['sync_job' => [
                 'id' => 'job_1', 'status' => $status, 'operation_key' => 'quickbooks.invoice.create',
                 'object_type' => 'invoice', 'connection_id' => 'c1', 'provider_key' => 'quickbooks',
-                'external_object_id' => $status === 'completed' ? '1042' : null, 'attempt_count' => 1,
+                'external_object_id' => null, 'attempt_count' => 1,
                 'last_error_code' => $status === 'completed' ? null : 'invoice_payload_conflict',
                 'created_at' => '2026-10-26T08:59:58.000Z', 'completed_at' => '2026-10-26T09:00:00.000Z',
             ]],
         ], JSON_THROW_ON_ERROR);
+    }
+
+    /** The job read the receiver makes for a completion: the ID is in result.external_id. */
+    private function jobReads(int $count): void
+    {
+        $read = self::runtimeJson(200, [
+            'id' => 'job_1', 'status' => 'completed', 'operation_key' => 'quickbooks.invoice.create',
+            'external_object_id' => null, 'last_error_code' => null, 'result' => ['external_id' => '1042'],
+        ]);
+        $this->fakeRuntime(...array_fill(0, $count, $read));
     }
 
     /** Sign the way src/outbound/sign.ts does (the PHP SDK's verifier is pinned to it). */
@@ -57,6 +67,7 @@ final class WebhookTest extends TestCase
 
     public function test_verified_delivery_fires_events_once(): void
     {
+        $this->jobReads(1);
         Event::fake();
         $this->deliver(self::body())->assertOk();
         $this->deliver(self::body())->assertOk(); // redelivery, same delivery_id
@@ -87,6 +98,7 @@ final class WebhookTest extends TestCase
 
     public function test_query_string_is_part_of_the_signed_target(): void
     {
+        $this->jobReads(1);
         Event::fake();
         $this->deliver(self::body('dlv_3'), '/integration-runtime/webhooks?source=ir')->assertOk();
         Event::assertDispatched(SyncJobCompleted::class);
@@ -94,6 +106,7 @@ final class WebhookTest extends TestCase
 
     public function test_listener_failure_lets_the_runtime_redeliver(): void
     {
+        $this->jobReads(2);
         Event::listen(SyncJobCompleted::class, function (): void {
             throw new \RuntimeException('database down');
         });
@@ -110,6 +123,7 @@ final class WebhookTest extends TestCase
 
     public function test_delivery_in_progress_is_not_acknowledged(): void
     {
+        $this->jobReads(1);
         Event::fake();
         // A worker holds the claim (still running, or killed before finishing).
         Cache::add('integration-runtime:webhook-claim:dlv_5', 1, 120);

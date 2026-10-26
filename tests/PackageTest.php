@@ -27,7 +27,7 @@ final class PackageTest extends TestCase
         self::assertNotSame('', $request->getHeaderLine('X-IR-Signature'));
         $body = json_decode((string) $request->getBody(), true);
         self::assertSame('erp.quickbooks.invoice.created', $body['recipe_key']);
-        self::assertSame(4, $body['recipe_version']);
+        self::assertSame(5, $body['recipe_version']);
         self::assertInstanceOf(QuickBooks::class, $this->app->make(QuickBooks::class));
     }
 

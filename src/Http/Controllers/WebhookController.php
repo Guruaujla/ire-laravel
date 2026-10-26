@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ezee\IntegrationRuntime\Laravel\Http\Controllers;
 
 use Ezee\IntegrationRuntime\Exception\WebhookVerificationException;
+use Ezee\IntegrationRuntime\Jobs;
 use Ezee\IntegrationRuntime\Laravel\Events\Factory;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
 use Ezee\IntegrationRuntime\WebhookVerifier;
@@ -24,6 +25,7 @@ final class WebhookController
     public function __invoke(
         Request $request,
         WebhookVerifier $verifier,
+        Jobs $jobs,
         Dispatcher $events,
         CacheFactory $cache,
         Config $config,
@@ -65,7 +67,14 @@ final class WebhookController
             $jobId = $event->jobId();
             $status = $event->job['status'] ?? null;
             if ($jobId !== null && is_string($status)) {
-                $finished = Factory::forStatus($event->tenantId, $jobId, $status, 'webhook', $event->job);
+                // The webhook snapshot carries no `result`, which is where the
+                // QuickBooks ID is published: read the job for a completion.
+                $snapshot = $event->job;
+                if ($status === 'completed') {
+                    $snapshot = $jobs->find($event->tenantId, $jobId)->raw;
+                    $status = is_string($snapshot['status'] ?? null) ? $snapshot['status'] : $status;
+                }
+                $finished = Factory::forStatus($event->tenantId, $jobId, $status, 'webhook', $snapshot);
                 if ($finished !== null) {
                     $events->dispatch($finished);
                 }

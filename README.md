@@ -10,7 +10,7 @@ with QuickBooks with very little code:
 - a queued poller that fires the same events when webhooks are not configured
 - `artisan` commands to check setup, inspect jobs, and install rules for coding agents
 
-Laravel 11 or 12 and PHP 8.2+.
+Laravel 12 (PHP 8.2+) or 13 (PHP 8.3+). Laravel 11 is not supported: Composer blocks every 11.x release on security advisories.
 
 ## Install
 
@@ -111,9 +111,12 @@ registers `POST /integration-runtime/webhooks` (no CSRF or session middleware).
 Ask the operator to register `https://your-app/integration-runtime/webhooks`
 for your app; they give you the endpoint key and secret. The controller verifies
 the signature over the raw request target and body, and returns 401 on failure.
-It dedupes on `delivery_id` in the cache for 7 days, fires events, and returns
-200. If a listener throws, the delivery is not marked as seen, so the runtime
-retries it. Put slow work on queued listeners.
+It fires the events, then records `delivery_id` in the cache for 7 days and
+returns 200; a repeat of a recorded delivery gets 200 without events. While a
+delivery is being handled it holds a short claim (`claim_ttl_seconds`, 120 s),
+and a concurrent repeat gets 429 so the runtime retries it later. If a listener
+throws, or the worker dies, nothing is recorded and the runtime retries. Put
+slow work on queued listeners.
 
 **Poller.** `IntegrationRuntime::track()` queues `WaitForSyncJob`. It re-reads
 the polling URL with growing delays, waits out 429/5xx, and fires the events

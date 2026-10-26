@@ -12,10 +12,10 @@
         "php": ">=8.2",
         "ezee/integration-runtime-sdk": "^1.0 || dev-local",
         "guzzlehttp/guzzle": "^7.8",
-        "laravel/framework": "^11.0 || ^12.0"
+        "laravel/framework": "^12.0 || ^13.0"
     },
     "require-dev": {
-        "orchestra/testbench": "^9.0 || ^10.0",
+        "orchestra/testbench": "^10.0 || ^11.0",
         "phpunit/phpunit": "^11.0",
         "laravel/pint": "^1.13"
     },

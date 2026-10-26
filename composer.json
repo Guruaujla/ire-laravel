@@ -1,0 +1,64 @@
+{
+    "name": "ezee/laravel-integration-runtime",
+    "description": "Laravel integration for the Integration Runtime: signed client, typed QuickBooks operations, verified completion webhooks as Laravel events, and queued job polling.",
+    "type": "library",
+    "license": "proprietary",
+    "keywords": [
+        "laravel",
+        "quickbooks",
+        "integration-runtime"
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ezee/integration-runtime-sdk": "^1.0 || dev-local",
+        "guzzlehttp/guzzle": "^7.8",
+        "laravel/framework": "^11.0 || ^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0 || ^10.0",
+        "phpunit/phpunit": "^11.0",
+        "laravel/pint": "^1.13"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../php",
+            "options": {
+                "symlink": false,
+                "versions": {
+                    "ezee/integration-runtime-sdk": "1.0.0"
+                }
+            }
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Ezee\\IntegrationRuntime\\Laravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Ezee\\IntegrationRuntime\\Laravel\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Ezee\\IntegrationRuntime\\Laravel\\IntegrationRuntimeServiceProvider"
+            ],
+            "aliases": {
+                "IntegrationRuntime": "Ezee\\IntegrationRuntime\\Laravel\\Facades\\IntegrationRuntime"
+            }
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "lint": "pint --test",
+        "format": "pint"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

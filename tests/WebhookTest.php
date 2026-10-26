@@ -1,0 +1,109 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Ezee\IntegrationRuntime\Laravel\Tests;
+
+use Ezee\IntegrationRuntime\Laravel\Events\SyncJobCompleted;
+use Ezee\IntegrationRuntime\Laravel\Events\SyncJobDeadLettered;
+use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
+use Ezee\IntegrationRuntime\Signer;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Testing\TestResponse;
+
+final class WebhookTest extends TestCase
+{
+    private static function body(string $deliveryId = 'dlv_1', string $status = 'completed'): string
+    {
+        return json_encode([
+            'schema_version' => 1,
+            'delivery_id' => $deliveryId,
+            'event_id' => 'job_1:sync_job.' . $status,
+            'event_type' => $status === 'completed' ? 'sync_job.completed' : 'sync_job.dead_lettered',
+            'occurred_at' => '2026-10-26T09:00:00.000Z',
+            'app_id' => 'app_erp',
+            'tenant_id' => 'tnt_1',
+            'data' => ['sync_job' => [
+                'id' => 'job_1', 'status' => $status, 'operation_key' => 'quickbooks.invoice.create',
+                'object_type' => 'invoice', 'connection_id' => 'c1', 'provider_key' => 'quickbooks',
+                'external_object_id' => $status === 'completed' ? '1042' : null, 'attempt_count' => 1,
+                'last_error_code' => $status === 'completed' ? null : 'invoice_payload_conflict',
+                'created_at' => '2026-10-26T08:59:58.000Z', 'completed_at' => '2026-10-26T09:00:00.000Z',
+            ]],
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    /** Sign the way src/outbound/sign.ts does (the PHP SDK's verifier is pinned to it). */
+    private function deliver(string $body, string $target = '/integration-runtime/webhooks', ?string $secret = null): TestResponse
+    {
+        $timestamp = (string) time();
+        $nonce = Signer::generateNonce();
+        $signature = Signer::base64UrlEncode(hash_hmac(
+            'sha256',
+            Signer::computeCanonicalPayload('POST', $target, $timestamp, $nonce, $body),
+            Signer::decodeSecret($secret ?? self::WEBHOOK_SECRET),
+            true,
+        ));
+
+        return $this->call('POST', $target, [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_IR_TIMESTAMP' => $timestamp,
+            'HTTP_X_IR_NONCE' => $nonce,
+            'HTTP_X_IR_SIGNATURE' => $signature,
+            'HTTP_X_IR_KEY_ID' => 'whk_test',
+        ], $body);
+    }
+
+    public function test_verified_delivery_fires_events_once(): void
+    {
+        Event::fake();
+        $this->deliver(self::body())->assertOk();
+        $this->deliver(self::body())->assertOk(); // redelivery, same delivery_id
+
+        Event::assertDispatchedTimes(WebhookReceived::class, 1);
+        Event::assertDispatchedTimes(SyncJobCompleted::class, 1);
+        Event::assertDispatched(SyncJobCompleted::class, fn(SyncJobCompleted $e) => $e->tenantId === 'tnt_1'
+            && $e->jobId === 'job_1'
+            && $e->externalObjectId === '1042'
+            && $e->operationKey === 'quickbooks.invoice.create'
+            && $e->source === 'webhook');
+    }
+
+    public function test_dead_letter_maps_to_its_event(): void
+    {
+        Event::fake();
+        $this->deliver(self::body('dlv_2', 'dead_lettered'))->assertOk();
+        Event::assertDispatched(SyncJobDeadLettered::class, fn(SyncJobDeadLettered $e) => $e->lastErrorCode === 'invoice_payload_conflict');
+    }
+
+    public function test_bad_signature_is_401_and_fires_nothing(): void
+    {
+        Event::fake();
+        $this->deliver(self::body(), secret: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA')->assertStatus(401);
+        Event::assertNotDispatched(WebhookReceived::class);
+        Event::assertNotDispatched(SyncJobCompleted::class);
+    }
+
+    public function test_query_string_is_part_of_the_signed_target(): void
+    {
+        Event::fake();
+        $this->deliver(self::body('dlv_3'), '/integration-runtime/webhooks?source=ir')->assertOk();
+        Event::assertDispatched(SyncJobCompleted::class);
+    }
+
+    public function test_listener_failure_lets_the_runtime_redeliver(): void
+    {
+        Event::listen(SyncJobCompleted::class, function (): void {
+            throw new \RuntimeException('database down');
+        });
+        $this->withoutExceptionHandling();
+        try {
+            $this->deliver(self::body('dlv_4'));
+            self::fail('expected the listener failure to surface');
+        } catch (\RuntimeException) {
+        }
+        Event::fake();
+        $this->deliver(self::body('dlv_4'))->assertOk();
+        Event::assertDispatched(SyncJobCompleted::class);
+    }
+}

@@ -14,14 +14,24 @@ Laravel 12 (PHP 8.2+) or 13 (PHP 8.3+). Laravel 11 is not supported: Composer bl
 
 ## Install
 
-Until the package is published, add both packages from a pinned checkout of
-the runtime repository (see [Publishing](#publishing)):
+Both packages are published as private Git repositories,
+[`Guruaujla/ire-laravel`](https://github.com/Guruaujla/ire-laravel) and
+[`Guruaujla/ire-php-sdk`](https://github.com/Guruaujla/ire-php-sdk). Add both to
+the app's `composer.json`; Composer does not read a dependency's repositories,
+so the SDK repository must be listed too:
 
 ```json
 "repositories": [
-    { "type": "path", "url": "../Integration-Runtime-Engine/sdks/php", "options": { "symlink": false, "versions": { "ezee/integration-runtime-sdk": "1.0.0" } } },
-    { "type": "path", "url": "../Integration-Runtime-Engine/sdks/laravel", "options": { "symlink": false, "versions": { "ezee/laravel-integration-runtime": "1.0.0" } } }
+    { "type": "vcs", "url": "https://github.com/Guruaujla/ire-php-sdk" },
+    { "type": "vcs", "url": "https://github.com/Guruaujla/ire-laravel" }
 ]
+```
+
+Give Composer a GitHub token that can read both repositories (once per machine
+or CI runner):
+
+```bash
+composer config --global github-oauth.github.com <token>
 ```
 
 ```bash
@@ -147,9 +157,10 @@ Calls throw `Ezee\IntegrationRuntime\Exception\RuntimeProblemException` with
 
 ## Publishing
 
-`.github/workflows/sdk-php-split.yml` mirrors `sdks/php` and `sdks/laravel` to
-their own repositories on a `php-sdk-v*` tag. After that, apps install with a
-Composer `vcs` repository (or Private Packagist) instead of a path checkout.
+`.github/workflows/sdk-php-split.yml` mirrors `sdks/php` to `ire-php-sdk` and
+`sdks/laravel` to `ire-laravel` on a `php-sdk-v*` tag of the runtime repository.
+Tag `php-sdk-v1.2.0` publishes `v1.2.0` in both. Never edit the mirrors
+directly; the next split overwrites their `main`.
 
 ## Development
 

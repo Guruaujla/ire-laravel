@@ -101,6 +101,12 @@ final class PackageTest extends TestCase
         $this->artisan('integration-runtime:check')->expectsOutputToContain('Signature rejected')->assertFailed();
     }
 
+    public function test_check_command_does_not_confirm_on_a_rate_limit(): void
+    {
+        $this->fakeRuntime(self::runtimeJson(200, ['status' => 'ok']), self::runtimeJson(429, ['code' => 'rate_limit.quota_exceeded']));
+        $this->artisan('integration-runtime:check')->expectsOutputToContain('Signing not confirmed')->assertFailed();
+    }
+
     public function test_agent_rules_install_is_idempotent(): void
     {
         $base = sys_get_temp_dir() . '/ir-agent-rules-' . bin2hex(random_bytes(4));

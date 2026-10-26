@@ -40,6 +40,18 @@ final class CheckCommand extends Command
 
             return self::FAILURE;
         }
+        // Only a lookup answer proves signing. A 429 can come from the
+        // pre-auth shield and a 5xx proves nothing, so neither confirms setup.
+        $code = null;
+        $decoded = json_decode((string) $probe->getBody(), true);
+        if (is_array($decoded) && is_string($decoded['code'] ?? null)) {
+            $code = $decoded['code'];
+        }
+        if ($status !== 200 && ! ($status === 404 && $code === 'tenant.not_found')) {
+            $this->error('Signing not confirmed: HTTP ' . $status . ($code !== null ? ' ' . $code : '') . '. Retry later; this is not proof of a working setup.');
+
+            return self::FAILURE;
+        }
         $this->info('Signed request accepted (HTTP ' . $status . ').');
 
         $tenant = $this->option('tenant');

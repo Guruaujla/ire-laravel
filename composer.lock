@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "0dc558789dc28f848b200a8bbfa20907",
+    "content-hash": "6bd1b414b59581d2e21c858a18fc51c6",
     "packages": [
         {
             "name": "brick/math",
@@ -513,11 +513,11 @@
         },
         {
             "name": "ezee/integration-runtime-sdk",
-            "version": "1.0.0",
+            "version": "1.2.0",
             "dist": {
                 "type": "path",
                 "url": "../php",
-                "reference": "fcfea7431c6ed3056967b611cd8323ed52b77a8c"
+                "reference": "686183c1ab510ac0c3a7abf6ea623b4988f9866b"
             },
             "require": {
                 "php": ">=8.2",

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ezee\IntegrationRuntime\Laravel\Http\Controllers;
 
+use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Exception\WebhookVerificationException;
 use Ezee\IntegrationRuntime\Jobs;
 use Ezee\IntegrationRuntime\Laravel\Events\Factory;
@@ -25,7 +26,7 @@ final class WebhookController
     public function __invoke(
         Request $request,
         WebhookVerifier $verifier,
-        Jobs $jobs,
+        Client $client,
         Dispatcher $events,
         CacheFactory $cache,
         Config $config,
@@ -71,7 +72,9 @@ final class WebhookController
                 // snapshot: the snapshot has no `result` (where the QuickBooks
                 // ID is published), and a delayed delivery can be older than
                 // the job (dead_lettered, then manually_resolved).
-                $current = $jobs->find($event->tenantId, $jobId);
+                // No 429 sleep here: it would outlive the claim. A throw makes
+                // the runtime redeliver later.
+                $current = (new Jobs($client->withoutRetry()))->find($event->tenantId, $jobId);
                 $finished = Factory::forStatus($event->tenantId, $jobId, $current->status, 'webhook', $current->raw);
                 if ($finished !== null) {
                     $events->dispatch($finished);

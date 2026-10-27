@@ -165,6 +165,9 @@ directly; the next split overwrites their `main`.
 
 ## Development
 
+Develop in the runtime repository, not the `ire-laravel` mirror: the package
+resolves the SDK from `../php` through a path repository.
+
 ```bash
 composer install   # uses ../php through a path repository
 composer test

@@ -32,7 +32,8 @@ final class IntegrationRuntimeServiceProvider extends ServiceProvider
             $setting = static function (string $key) use ($config): string {
                 $value = $config->get('integration-runtime.' . $key);
                 if (! is_string($value) || $value === '') {
-                    throw new \RuntimeException('Set integration-runtime.' . $key . ' (INTEGRATION_RUNTIME_' . strtoupper($key) . ') before calling the runtime.');
+                    $env = ['base_url' => 'INTEGRATION_RUNTIME_URL', 'app_id' => 'INTEGRATION_RUNTIME_APP_ID', 'key_id' => 'INTEGRATION_RUNTIME_KEY_ID', 'secret' => 'INTEGRATION_RUNTIME_SECRET'][$key] ?? 'INTEGRATION_RUNTIME_' . strtoupper($key);
+                    throw new \RuntimeException('Set integration-runtime.' . $key . ' (' . $env . ') before calling the runtime.');
                 }
 
                 return $value;

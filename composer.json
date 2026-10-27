@@ -10,7 +10,7 @@
     ],
     "require": {
         "php": ">=8.2",
-        "ezee/integration-runtime-sdk": "^1.0 || dev-local",
+        "ezee/integration-runtime-sdk": "^1.2 || dev-local",
         "guzzlehttp/guzzle": "^7.8",
         "laravel/framework": "^12.0 || ^13.0"
     },
@@ -26,7 +26,7 @@
             "options": {
                 "symlink": false,
                 "versions": {
-                    "ezee/integration-runtime-sdk": "1.0.0"
+                    "ezee/integration-runtime-sdk": "1.2.0"
                 }
             }
         }

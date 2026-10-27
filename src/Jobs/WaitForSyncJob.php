@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ezee\IntegrationRuntime\Laravel\Jobs;
 
+use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Exception\RuntimeProblemException;
 use Ezee\IntegrationRuntime\Jobs;
 use Ezee\IntegrationRuntime\Laravel\Events\Factory;
@@ -42,8 +43,10 @@ final class WaitForSyncJob implements ShouldQueue
         }
     }
 
-    public function handle(Jobs $jobs, Dispatcher $events, Config $config): void
+    public function handle(Client $client, Dispatcher $events, Config $config): void
     {
+        // A 429 must release this job, not sleep inside the worker.
+        $jobs = new Jobs($client->withoutRetry());
         $maxAttempts = (int) $config->get('integration-runtime.polling.max_attempts', 60);
         $initial = (int) $config->get('integration-runtime.polling.initial_delay_seconds', 5);
         $cap = (int) $config->get('integration-runtime.polling.max_delay_seconds', 300);

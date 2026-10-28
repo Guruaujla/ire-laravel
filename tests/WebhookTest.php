@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ezee\IntegrationRuntime\Laravel\Tests;
 
+use Ezee\IntegrationRuntime\Laravel\Events\AccountingDocumentStatusChanged;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobCompleted;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobDeadLettered;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobResolved;
@@ -82,6 +83,36 @@ final class WebhookTest extends TestCase
             && $e->externalObjectId === '1042'
             && $e->operationKey === 'quickbooks.invoice.create'
             && $e->source === 'webhook');
+    }
+
+    public function test_neutral_document_status_fires_its_event_without_a_job_read(): void
+    {
+        $this->fakeRuntime(); // any runtime call would fail the test
+        Event::fake();
+        $body = json_encode([
+            'schema_version' => 1,
+            'delivery_id' => 'dlv_doc',
+            'event_id' => 'evt_1:accounting.document.status_changed',
+            'event_type' => 'accounting.document.status_changed',
+            'occurred_at' => '2026-10-28T10:00:00.000Z',
+            'app_id' => 'app_erp',
+            'tenant_id' => 'tnt_1',
+            'callback_epoch' => 1,
+            'data' => ['connection_id' => 'c1', 'sequence' => 4, 'document' => [
+                'provider_key' => 'quickbooks', 'document_type' => 'invoice', 'erp_id' => 'INV-1',
+                'provider_id' => '101', 'revision' => '3', 'status' => 'paid', 'balance' => '0.00',
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        $this->deliver($body)->assertOk();
+        $this->deliver($body)->assertOk(); // redelivery, same delivery_id
+
+        Event::assertDispatchedTimes(AccountingDocumentStatusChanged::class, 1);
+        Event::assertDispatched(AccountingDocumentStatusChanged::class, fn(AccountingDocumentStatusChanged $e) => $e->tenantId === 'tnt_1'
+            && $e->connectionId === 'c1'
+            && $e->sequence === 4
+            && $e->document['erp_id'] === 'INV-1'
+            && $e->document['status'] === 'paid');
+        Event::assertNotDispatched(SyncJobCompleted::class);
     }
 
     public function test_dead_letter_maps_to_its_event(): void

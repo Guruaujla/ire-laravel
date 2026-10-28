@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ezee\IntegrationRuntime\Laravel;
 
+use Ezee\IntegrationRuntime\Accounting;
 use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Connections;
 use Ezee\IntegrationRuntime\Jobs;
@@ -52,6 +53,7 @@ final class IntegrationRuntimeServiceProvider extends ServiceProvider
             );
         });
         $this->app->singleton(QuickBooks::class, static fn(Application $app) => new QuickBooks($app->make(Client::class)));
+        $this->app->singleton(Accounting::class, static fn(Application $app) => new Accounting($app->make(Client::class)));
         $this->app->singleton(Jobs::class, static fn(Application $app) => new Jobs($app->make(Client::class)));
         $this->app->singleton(Connections::class, static fn(Application $app) => new Connections($app->make(Client::class)));
         $this->app->singleton(TenantClient::class, static fn(Application $app) => new TenantClient($app->make(Client::class)));

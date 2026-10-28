@@ -2,10 +2,11 @@
 
 Laravel package for the Integration Runtime. It wraps the PHP SDK
 (`ezee/integration-runtime-sdk`) so a Laravel ERP or communication app can sync
-with QuickBooks with very little code:
+with its accounting provider (QuickBooks today) with very little code:
 
 - configuration from `.env`, with signed requests set up for you
-- `IntegrationRuntime::quickbooks()`: typed methods for every live QuickBooks operation
+- `IntegrationRuntime::accounting()`: provider-neutral accounting writes, reads and onboarding
+- `IntegrationRuntime::quickbooks()`: the QuickBooks API (deprecated since 1.3.0; see [`docs/accounting-migration.md`](docs/accounting-migration.md))
 - verified completion webhooks, fired as Laravel events and deduplicated
 - a queued poller that fires the same events when webhooks are not configured
 - `artisan` commands to check setup, inspect jobs, and install rules for coding agents
@@ -63,33 +64,50 @@ php artisan integration-runtime:check --tenant=<runtime tenant_id>
 ## Use
 
 ```php
-use Ezee\IntegrationRuntime\QuickBooks;
+use Ezee\IntegrationRuntime\Accounting;
 use Ezee\IntegrationRuntime\Laravel\Facades\IntegrationRuntime;
 
 // 1. Map your workspace to a runtime tenant, once.
 $tenant = IntegrationRuntime::tenants()->registerOrResolveTenant((string) $team->id, $team->name);
 
-// 2. Connect QuickBooks: redirect the admin, then confirm on return.
-$session = IntegrationRuntime::connections()->start($tenant['tenant_id'], route('qb.return'), $state);
+// 2. Connect the provider: redirect the admin, then confirm on return.
+$session = IntegrationRuntime::connections()->start($tenant['tenant_id'], route('accounting.return'), $state);
 return redirect()->away($session['authorize_url']);
 // On return: check $state, then require status === 'connected':
 $connection = IntegrationRuntime::connections()->get($tenantId, $request->query('connection_id'));
 
-// 3. Write. Persist the request first; a retry resends the same array.
-$request = QuickBooks::buildRequest('quickbooks.invoice.create', $tenantId, $connectionId,
-    (string) $invoice->id, "erp_invoice_{$invoice->id}:create", $payload);
-$invoice->update(['qb_request' => $request]);
-$receipt = IntegrationRuntime::quickbooks()->submit($request);
-$invoice->update(['qb_job_id' => $receipt->jobId, 'qb_polling_url' => $receipt->pollingUrl]);
+// 3. Onboard: bind customers, items and tax codes; map payment methods and accounts.
+$accounting = IntegrationRuntime::accounting();
+$matches = $accounting->matchRecords($tenantId, $connectionId, 'customer', $erpCustomers);
+$accounting->bindRecords($tenantId, $connectionId, 'customer', $confirmedBindings);
+$accounting->setMapping($tenantId, $connectionId, 'payment_method', 'VISA', $providerRef);
+
+// 4. Write. ERP ids and decimal money only. Persist the request first; a retry resends the same array.
+$request = Accounting::buildRequest('accounting.invoice.create', $tenantId,
+    (string) $invoice->id, "invoice:{$invoice->id}:create", $payload);
+$invoice->update(['accounting_request' => $request]);
+$receipt = $accounting->submit($request);
+$invoice->update(['accounting_job_id' => $receipt->jobId]);
 IntegrationRuntime::track($receipt, $tenantId);   // polling fallback; harmless with webhooks
+
+// 5. On SyncJobCompleted: read the neutral result and store the revision.
+$status = $accounting->status($tenantId, $event->jobId);
 ```
 
-Every operation has a method: `createInvoice`, `updateInvoice`, `voidInvoice`,
-`createPayment`, `createRefund`, `createCreditMemo`, `applyCreditMemo`, and
-`upsertMaster` (Customer and Item). There are also reads: `findMaster`,
-`getMasterMapping` and `status`. Payload shapes, with one validator-checked example per operation,
-are in this package's [`docs/quickbooks-operations.md`](docs/quickbooks-operations.md) and
-[`docs/quickbooks-operations.json`](docs/quickbooks-operations.json).
+Writes: `upsertCustomer`, `upsertItem`, `createInvoice`, `updateInvoice`,
+`voidInvoice`, `createPayment`, `createRefund`, `createCreditMemo`,
+`applyCreditMemo`. Reads and onboarding: `status`, `providers`,
+`connectionId`, `refresh`, `link`, `referenceData`, `getMapping`/`setMapping`/
+`deleteMapping`, `settings`/`updateSettings`, `listRecords`/`matchRecords`/
+`bindRecords`. No method takes a provider. Payload shapes, with one
+validator-checked example per operation, are in this package's
+[`docs/accounting-operations.md`](docs/accounting-operations.md) and
+[`docs/accounting-operations.json`](docs/accounting-operations.json).
+
+`IntegrationRuntime::quickbooks()` still works and is documented in
+[`docs/quickbooks-operations.md`](docs/quickbooks-operations.md). Moving to
+`accounting()`, including linking invoices created through it:
+[`docs/accounting-migration.md`](docs/accounting-migration.md).
 
 ## Results as events
 

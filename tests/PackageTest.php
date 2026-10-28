@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ezee\IntegrationRuntime\Laravel\Tests;
 
+use Ezee\IntegrationRuntime\Accounting;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobCompleted;
 use Ezee\IntegrationRuntime\Laravel\Facades\IntegrationRuntime;
 use Ezee\IntegrationRuntime\Laravel\Jobs\WaitForSyncJob;
@@ -31,6 +32,19 @@ final class PackageTest extends TestCase
         self::assertInstanceOf(QuickBooks::class, $this->app->make(QuickBooks::class));
     }
 
+    public function test_facade_submits_neutral_accounting_operations(): void
+    {
+        $transport = $this->fakeRuntime(self::runtimeJson(202, ['job_id' => 'job_2', 'polling_url' => '/v1/accounting/operations/job_2?tenant_id=t1', 'status' => 'queued']));
+        $receipt = IntegrationRuntime::accounting()->createInvoice('t1', 'INV-1', 'invoice:INV-1:create', ['invoice' => ['number' => 'INV-1']]);
+
+        self::assertSame('job_2', $receipt->jobId);
+        $request = $transport->requests[0];
+        self::assertSame('/v1/accounting/operations', $request->getUri()->getPath());
+        $body = json_decode((string) $request->getBody(), true);
+        self::assertSame(['tenant_id' => 't1', 'operation' => 'accounting.invoice.create', 'erp_id' => 'INV-1', 'idempotency_key' => 'invoice:INV-1:create', 'payload' => ['invoice' => ['number' => 'INV-1']]], $body);
+        self::assertInstanceOf(Accounting::class, $this->app->make(Accounting::class));
+    }
+
     public function test_missing_credentials_fail_with_the_env_name(): void
     {
         $this->app['config']->set('integration-runtime.secret', null);
@@ -52,6 +66,13 @@ final class PackageTest extends TestCase
         Queue::fake();
         IntegrationRuntime::track(new OperationReceipt('job_1', '/v1/sync-jobs/job_1?tenant_id=t1', 'queued', null), 't1');
         Queue::assertPushed(WaitForSyncJob::class, fn(WaitForSyncJob $job) => $job->pollingUrl === '/v1/sync-jobs/job_1?tenant_id=t1' && $job->tenantId === 't1');
+    }
+
+    public function test_track_polls_an_accounting_receipt_through_its_sync_job(): void
+    {
+        Queue::fake();
+        IntegrationRuntime::track(new OperationReceipt('job 2', '/v1/accounting/operations/job%202?tenant_id=t%201', 'queued', null), 't 1');
+        Queue::assertPushed(WaitForSyncJob::class, fn(WaitForSyncJob $job) => $job->pollingUrl === '/v1/sync-jobs/job%202?tenant_id=t%201' && $job->jobId === 'job 2');
     }
 
     public function test_poller_fires_the_completed_event_when_terminal(): void
@@ -125,5 +146,8 @@ final class PackageTest extends TestCase
         self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/SKILL.md');
         self::assertJson((string) file_get_contents($base . '/.claude/skills/quickbooks-integration-runtime/quickbooks-operations.json'));
         self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/quickbooks-operations.md');
+        self::assertJson((string) file_get_contents($base . '/.claude/skills/quickbooks-integration-runtime/accounting-operations.json'));
+        self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/accounting-migration.md');
+        self::assertStringContainsString('IntegrationRuntime::accounting()', $agents);
     }
 }

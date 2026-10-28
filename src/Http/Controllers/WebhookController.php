@@ -7,8 +7,10 @@ namespace Ezee\IntegrationRuntime\Laravel\Http\Controllers;
 use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Exception\WebhookVerificationException;
 use Ezee\IntegrationRuntime\Jobs;
+use Ezee\IntegrationRuntime\Laravel\Events\AccountingDocumentStatusChanged;
 use Ezee\IntegrationRuntime\Laravel\Events\Factory;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
+use Ezee\IntegrationRuntime\WebhookEvent;
 use Ezee\IntegrationRuntime\WebhookVerifier;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Contracts\Config\Repository as Config;
@@ -18,7 +20,8 @@ use Illuminate\Http\Response;
 use Psr\Log\LoggerInterface;
 
 /**
- * Receives `sync_job.*` deliveries: verify first, dedupe on delivery_id,
+ * Receives `sync_job.*` and `accounting.document.status_changed` deliveries:
+ * verify first, dedupe on delivery_id,
  * fire events, answer 2xx fast. Heavy listener work belongs on a queue.
  */
 final class WebhookController
@@ -65,6 +68,9 @@ final class WebhookController
 
         try {
             $events->dispatch(new WebhookReceived($event));
+            if ($event->eventType === WebhookEvent::ACCOUNTING_DOCUMENT_STATUS_CHANGED) {
+                $events->dispatch(new AccountingDocumentStatusChanged($event->tenantId, $event->connectionId(), $event->sequence(), $event->document, $event));
+            }
             $jobId = $event->jobId();
             $status = $event->job['status'] ?? null;
             if ($jobId !== null && is_string($status)) {

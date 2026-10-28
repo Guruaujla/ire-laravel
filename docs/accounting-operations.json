@@ -1,0 +1,357 @@
+{
+  "description": "One validator-checked POST /v1/accounting/operations request per neutral operation. ERP identifiers only; see accounting-operations.md.",
+  "operations": {
+    "accounting.customer.upsert": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.customer.upsert",
+      "erp_id": "CUST-1001",
+      "idempotency_key": "customer:CUST-1001:v1",
+      "payload": {
+        "customer": {
+          "name": "Maple Dental Clinic",
+          "email": "billing@mapledental.example",
+          "currency": "CAD"
+        }
+      }
+    },
+    "accounting.item.upsert": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.item.upsert",
+      "erp_id": "ITEM-CONSULT",
+      "idempotency_key": "item:ITEM-CONSULT:v1",
+      "payload": {
+        "item": {
+          "name": "Consulting",
+          "type": "service",
+          "income_account": "4000",
+          "unit_price": "100.00",
+          "description": "Hourly consulting"
+        }
+      }
+    },
+    "accounting.invoice.create": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.invoice.create",
+      "erp_id": "INV-1001",
+      "idempotency_key": "invoice:INV-1001:create",
+      "payload": {
+        "invoice": {
+          "number": "INV-1001",
+          "issue_date": "2026-10-28",
+          "due_date": "2026-11-27",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "lines": [
+            {
+              "erp_line_id": "L1",
+              "item": {
+                "erp_id": "ITEM-CONSULT"
+              },
+              "description": "Consulting",
+              "quantity": "1",
+              "unit_price": "100.00",
+              "amount": "100.00",
+              "tax_code": "HST"
+            }
+          ]
+        },
+        "expected_totals": {
+          "net_amount": "100.00",
+          "total_tax": "13.00",
+          "total_amount": "113.00",
+          "tax_lines": [
+            {
+              "tax_code": "HST",
+              "component": "HST ON",
+              "rate_percent": "13",
+              "taxable_amount": "100.00",
+              "tax_amount": "13.00"
+            }
+          ]
+        }
+      }
+    },
+    "accounting.invoice.update": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.invoice.update",
+      "erp_id": "INV-1001",
+      "idempotency_key": "invoice:INV-1001:change:CHG-7",
+      "payload": {
+        "change_id": "CHG-7",
+        "invoice": {
+          "issue_date": "2026-10-28",
+          "due_date": "2026-12-12",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "private_note": "Due date extended",
+          "lines": [
+            {
+              "erp_line_id": "L1",
+              "item": {
+                "erp_id": "ITEM-CONSULT"
+              },
+              "description": "Consulting",
+              "quantity": "1",
+              "unit_price": "100.00",
+              "amount": "100.00",
+              "tax_code": "HST"
+            }
+          ]
+        },
+        "expected_totals": {
+          "net_amount": "100.00",
+          "total_tax": "13.00",
+          "total_amount": "113.00",
+          "tax_lines": [
+            {
+              "tax_code": "HST",
+              "component": "HST ON",
+              "rate_percent": "13",
+              "taxable_amount": "100.00",
+              "tax_amount": "13.00"
+            }
+          ]
+        },
+        "before": {
+          "expected_revision": "0",
+          "totals": {
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_code": "HST",
+                "component": "HST ON",
+                "rate_percent": "13",
+                "taxable_amount": "100.00",
+                "tax_amount": "13.00"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "accounting.invoice.void": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.invoice.void",
+      "erp_id": "INV-1001",
+      "idempotency_key": "invoice:INV-1001:void:VOID-3",
+      "payload": {
+        "void_id": "VOID-3",
+        "invoice": {
+          "issue_date": "2026-10-28",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "expected_revision": "1",
+          "before_totals": {
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_code": "HST",
+                "component": "HST ON",
+                "rate_percent": "13",
+                "taxable_amount": "100.00",
+                "tax_amount": "13.00"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "accounting.payment.create": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.payment.create",
+      "erp_id": "PAY-501",
+      "idempotency_key": "payment:PAY-501",
+      "payload": {
+        "payment": {
+          "date": "2026-10-30",
+          "amount": "113.00",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "payment_method": "VISA",
+          "deposit_account": "1010",
+          "reference": "AUTH-88231"
+        },
+        "invoice": {
+          "erp_id": "INV-1001",
+          "expected_revision": "0",
+          "expected_balance": "113.00"
+        }
+      }
+    },
+    "accounting.refund.create": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.refund.create",
+      "erp_id": "RET-77",
+      "idempotency_key": "refund:RET-77",
+      "payload": {
+        "refund": {
+          "number": "RF-77",
+          "date": "2026-11-02",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "lines": [
+            {
+              "erp_line_id": "R1",
+              "item": {
+                "erp_id": "ITEM-CONSULT"
+              },
+              "description": "Consulting",
+              "quantity": "1",
+              "unit_price": "100.00",
+              "amount": "100.00",
+              "tax_code": "HST",
+              "original_erp_line_id": "L1"
+            }
+          ],
+          "payment_method": "VISA",
+          "refund_account": "1010"
+        },
+        "expected_totals": {
+          "net_amount": "100.00",
+          "total_tax": "13.00",
+          "total_amount": "113.00",
+          "tax_lines": [
+            {
+              "tax_code": "HST",
+              "component": "HST ON",
+              "rate_percent": "13",
+              "taxable_amount": "100.00",
+              "tax_amount": "13.00"
+            }
+          ]
+        },
+        "original_invoice": {
+          "erp_id": "INV-1001",
+          "before_totals": {
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_code": "HST",
+                "component": "HST ON",
+                "rate_percent": "13",
+                "taxable_amount": "100.00",
+                "tax_amount": "13.00"
+              }
+            ]
+          }
+        },
+        "original_payment": {
+          "erp_id": "PAY-501"
+        }
+      }
+    },
+    "accounting.credit_memo.create": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.credit_memo.create",
+      "erp_id": "CM-12",
+      "idempotency_key": "credit_memo:CM-12",
+      "payload": {
+        "credit_memo": {
+          "number": "CM-12",
+          "date": "2026-11-02",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "lines": [
+            {
+              "erp_line_id": "C1",
+              "item": {
+                "erp_id": "ITEM-CONSULT"
+              },
+              "description": "Consulting",
+              "quantity": "1",
+              "unit_price": "100.00",
+              "amount": "100.00",
+              "tax_code": "HST",
+              "original_erp_line_id": "L1"
+            }
+          ]
+        },
+        "expected_totals": {
+          "net_amount": "100.00",
+          "total_tax": "13.00",
+          "total_amount": "113.00",
+          "tax_lines": [
+            {
+              "tax_code": "HST",
+              "component": "HST ON",
+              "rate_percent": "13",
+              "taxable_amount": "100.00",
+              "tax_amount": "13.00"
+            }
+          ]
+        },
+        "original_invoice": {
+          "erp_id": "INV-1001",
+          "before_totals": {
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_code": "HST",
+                "component": "HST ON",
+                "rate_percent": "13",
+                "taxable_amount": "100.00",
+                "tax_amount": "13.00"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "accounting.credit_memo.apply": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.credit_memo.apply",
+      "erp_id": "APP-12",
+      "idempotency_key": "credit_application:APP-12",
+      "payload": {
+        "application": {
+          "date": "2026-11-03",
+          "amount": "113.00",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          }
+        },
+        "credit_memo": {
+          "erp_id": "CM-12"
+        },
+        "invoice": {
+          "erp_id": "INV-1001",
+          "before_totals": {
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_code": "HST",
+                "component": "HST ON",
+                "rate_percent": "13",
+                "taxable_amount": "100.00",
+                "tax_amount": "13.00"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

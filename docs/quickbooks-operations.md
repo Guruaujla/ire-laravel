@@ -1,5 +1,10 @@
 # QuickBooks operations reference
 
+> New ERP accounting code should use the provider-neutral API in
+> [accounting-operations.md](accounting-operations.md); the SDK's `quickbooks()`
+> helper for these native recipes is deprecated since 1.3.0. Moving existing
+> code: [accounting-migration.md](accounting-migration.md).
+
 One page per question an ERP developer (or their coding agent) asks: *which
 request do I send, with which identity, and what do I do with the answer?*
 Every request below is also in machine-readable form in

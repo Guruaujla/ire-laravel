@@ -83,8 +83,9 @@ $accounting->bindRecords($tenantId, $connectionId, 'customer', $confirmedBinding
 $accounting->setMapping($tenantId, $connectionId, 'payment_method', 'VISA', $providerRef);
 
 // 4. Write. ERP ids and decimal money only. Persist the request first; a retry resends the same array.
+// Pass the stored connection id: a retried request stays bound to the company it was first sent to.
 $request = Accounting::buildRequest('accounting.invoice.create', $tenantId,
-    (string) $invoice->id, "invoice:{$invoice->id}:create", $payload);
+    (string) $invoice->id, "invoice:{$invoice->id}:create", $payload, $connectionId);
 $invoice->update(['accounting_request' => $request]);
 $receipt = $accounting->submit($request);
 $invoice->update(['accounting_job_id' => $receipt->jobId]);
@@ -97,7 +98,7 @@ $status = $accounting->status($tenantId, $event->jobId);
 Writes: `upsertCustomer`, `upsertItem`, `createInvoice`, `updateInvoice`,
 `voidInvoice`, `createPayment`, `createRefund`, `createCreditMemo`,
 `applyCreditMemo`. Reads and onboarding: `status`, `providers`,
-`connectionId`, `refresh`, `link`, `referenceData`, `getMapping`/`setMapping`/
+`connectionId`, `refresh`, `link`, `referenceOptions`/`referenceData`, `getMapping`/`setMapping`/
 `deleteMapping`, `settings`/`updateSettings`, `listRecords`/`matchRecords`/
 `bindRecords`. No method takes a provider. Payload shapes, with one
 validator-checked example per operation, are in this package's
@@ -112,26 +113,39 @@ validator-checked example per operation, are in this package's
 ## Results as events
 
 ```php
-use Ezee\IntegrationRuntime\Laravel\Events\{SyncJobCompleted, SyncJobDeadLettered};
+use Ezee\IntegrationRuntime\Laravel\Events\{AccountingDocumentStatusChanged, SyncJobCompleted, SyncJobDeadLettered};
+use Ezee\IntegrationRuntime\Laravel\Facades\IntegrationRuntime;
 
 Event::listen(function (SyncJobCompleted $e) {
-    Invoice::where('qb_job_id', $e->jobId)->update(['qb_id' => $e->externalObjectId]);
+    $sync = AccountingSync::where('job_id', $e->jobId)->firstOrFail();
+    $result = IntegrationRuntime::accounting()->status($e->tenantId, $e->jobId)['result'];
+    $sync->update(['provider_id' => $result['provider_id'], 'lines' => $result['lines'] ?? null]);
+    // Then re-read the document with accounting()->refresh() for its revision, status and balance.
 });
 Event::listen(function (SyncJobDeadLettered $e) {
     // Do not resubmit with a new key. Flag for reconciliation.
+});
+Event::listen(function (AccountingDocumentStatusChanged $e) {
+    // A signal: re-read with accounting()->refresh() and store that read, one read per document
+    // at a time (under a row lock). Do not store $e->document, except a final 'deleted' status.
 });
 ```
 
 | Event | When |
 | --- | --- |
-| `SyncJobCompleted` | Job completed. `externalObjectId` is the QuickBooks ID from the job's published `result`. |
+| `SyncJobCompleted` | Job completed. For an `accounting()` write, read the neutral result with `accounting()->status($tenantId, $jobId)`. |
 | `SyncJobDeadLettered` | Terminal failure. Read `lastErrorCode`; reconcile. |
 | `SyncJobFailed` | `failed` or `cancelled`, seen by polling. |
 | `SyncJobResolved` | An operator closed the job manually. |
+| `AccountingDocumentStatusChanged` | A document the runtime wrote changed in the provider (paid, voided, edited). Needs the endpoint subscribed to `accounting.document.status_changed`. Has `tenantId`, `connectionId`, `sequence`, `document`. |
 | `WebhookReceived` | Every verified, first-seen delivery (raw `WebhookEvent`). |
 
-Each event has `tenantId`, `jobId`, `status`, `operationKey`,
+Each `SyncJob*` event has `tenantId`, `jobId`, `status`, `operationKey`,
 `externalObjectId`, `lastErrorCode`, `source` (`webhook` or `poll`) and `job`.
+For `accounting()` writes, `operationKey` and `externalObjectId` are the
+provider's native values (`quickbooks.*`, the QuickBooks ID): key your
+listeners on `jobId` and take ids from the neutral `status()` result, so the
+code stays provider-neutral. They are kept for the deprecated `quickbooks()`.
 The same job can arrive from both sources, and webhooks are at-least-once, so
 listeners must be idempotent on `jobId`.
 
@@ -141,8 +155,9 @@ Ask the operator to register `https://your-app/integration-runtime/webhooks`
 for your app; they give you the endpoint key and secret. The controller verifies
 the signature over the raw request target and body, and returns 401 on failure.
 It then reads the job (one signed GET) and fires events from the job's current
-state: the webhook body carries no `result` (where the QuickBooks ID is), and a
-delayed delivery can be older than the job. It fires the events, then records `delivery_id` in the cache for 7 days and
+state: the webhook body carries no `result`, and a delayed delivery can be
+older than the job. An `accounting.document.status_changed` delivery fires
+`AccountingDocumentStatusChanged` directly. It fires the events, then records `delivery_id` in the cache for 7 days and
 returns 200; a repeat of a recorded delivery gets 200 without events. While a
 delivery is being handled it holds a short claim (`claim_ttl_seconds`, 120 s),
 and a concurrent repeat gets 429 so the runtime retries it later. If a listener
@@ -162,9 +177,15 @@ Calls throw `Ezee\IntegrationRuntime\Exception\RuntimeProblemException` with
 | --- | --- |
 | `retry_same_request` | Wait (`retryAfterSeconds`), then `submit()` the same array. |
 | `fix_request` | Correct the input; keep the same idempotency key. |
+| `fix_setup` | `accounting.*` only: fix the mapping, settings, link or connection the problem names, then `submit()` the same saved array. |
+| `review_and_resubmit` | `accounting.*` only: the document changed or cannot be written as sent (revision, amount, tax, number, closed period). Refresh, have a person review, send the corrected document as a new business event with a new key. |
+| `do_not_sync` | `accounting.*` only: before the sync start date or unsupported by the provider. Keep it in the ERP only. |
 | `ask_operator` | A release gate or provisioning refused it. Do not loop. |
 | `stop_and_reconcile` | Identity conflict or uncertain outcome. Never mint a new key. |
 | `fix_credentials` | Check app/key/secret and the server clock. |
+
+New values may be added; treat an unknown one as `stop_and_reconcile`. Code
+mapping: [`docs/accounting-operations.md`](docs/accounting-operations.md) "Errors".
 
 ## Commands
 
@@ -172,7 +193,7 @@ Calls throw `Ezee\IntegrationRuntime\Exception\RuntimeProblemException` with
 | --- | --- |
 | `integration-runtime:check [--tenant=]` | Health, signing and tenant-scope reads. Never writes. |
 | `integration-runtime:job {tenant} {job}` | Prints one job. |
-| `integration-runtime:agent-rules [--force]` | Writes `.claude/skills/quickbooks-integration-runtime/SKILL.md` and a marked section in `AGENTS.md`. |
+| `integration-runtime:agent-rules [--force]` | Writes `.claude/skills/accounting-integration-runtime/SKILL.md` and a marked section in `AGENTS.md`. Removes the copy versions up to 1.3.0 wrote under `.claude/skills/quickbooks-integration-runtime/`. |
 
 ## Publishing
 

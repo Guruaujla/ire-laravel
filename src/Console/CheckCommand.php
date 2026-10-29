@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Ezee\IntegrationRuntime\Laravel\Console;
 
+use Ezee\IntegrationRuntime\Accounting;
 use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Exception\RuntimeProblemException;
 use Ezee\IntegrationRuntime\Jobs;
@@ -12,11 +13,11 @@ use Illuminate\Console\Command;
 /** Proves configuration and signing with read-only calls. Never writes. */
 final class CheckCommand extends Command
 {
-    protected $signature = 'integration-runtime:check {--tenant= : Runtime tenant_id to prove tenant scope with a signed job-list read}';
+    protected $signature = 'integration-runtime:check {--tenant= : Runtime tenant_id to prove tenant scope and report its accounting connection}';
 
     protected $description = 'Check Integration Runtime connectivity, credentials and signing (read-only)';
 
-    public function handle(Client $client, Jobs $jobs): int
+    public function handle(Client $client, Jobs $jobs, Accounting $accounting): int
     {
         $health = $client->send('GET', '/v1/health');
         if ($health->getStatusCode() !== 200) {
@@ -64,8 +65,44 @@ final class CheckCommand extends Command
 
                 return self::FAILURE;
             }
+            $this->reportAccountingConnection($accounting, $tenant);
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Report, not enforce: a tenant that has not connected yet is a normal
+     * state, so only the setup check above decides the exit code.
+     */
+    private function reportAccountingConnection(Accounting $accounting, string $tenant): void
+    {
+        try {
+            $body = $accounting->providers($tenant);
+        } catch (RuntimeProblemException $e) {
+            $this->warn('Accounting providers read failed: HTTP ' . $e->httpStatus . ' ' . $e->problemCode);
+
+            return;
+        } catch (\Throwable $e) {
+            // An unreadable response is reported too; it never fails the command.
+            $this->warn('Accounting providers read failed: ' . $e->getMessage());
+
+            return;
+        }
+        $state = is_string($body['connection_state'] ?? null) ? $body['connection_state'] : 'unknown';
+        $connection = is_array($body['connection'] ?? null) ? $body['connection'] : [];
+        if ($state === 'connected') {
+            $this->info(sprintf(
+                'Accounting connection: %s (%s).',
+                is_string($connection['connection_id'] ?? null) ? $connection['connection_id'] : '?',
+                is_string($connection['provider_key'] ?? null) ? $connection['provider_key'] : '?',
+            ));
+        } elseif ($state === 'none') {
+            $this->warn('Accounting connection: none. The tenant has not connected a provider yet.');
+        } elseif ($state === 'multiple') {
+            $this->warn('Accounting connection: multiple. Writes are refused until the tenant has exactly one; disconnect the extra one.');
+        } else {
+            $this->warn('Accounting connection: ' . $state . ' (not recognised by this package version).');
+        }
     }
 }

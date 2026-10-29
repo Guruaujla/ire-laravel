@@ -2,7 +2,7 @@
 
 Accounting sync (QuickBooks today, other providers later) goes through
 `ezee/laravel-integration-runtime`; never call a provider API directly. Full
-rules: `.claude/skills/quickbooks-integration-runtime/SKILL.md`. Payload
+rules: `.claude/skills/accounting-integration-runtime/SKILL.md`. Payload
 examples for every operation: `accounting-operations.md` and `.json` in that
 folder.
 

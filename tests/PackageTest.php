@@ -109,11 +109,54 @@ final class PackageTest extends TestCase
             self::runtimeJson(200, ['status' => 'ok']),
             self::runtimeJson(404, ['code' => 'tenant.not_found']),
             self::runtimeJson(200, ['data' => []]),
+            self::runtimeJson(200, ['providers' => [], 'connection' => ['connection_id' => 'conn_1', 'provider_key' => 'quickbooks', 'provider_account_id' => '123'], 'connection_state' => 'connected']),
         );
-        $this->artisan('integration-runtime:check', ['--tenant' => 't1'])->assertSuccessful();
+        $this->artisan('integration-runtime:check', ['--tenant' => 't1'])
+            ->expectsOutputToContain('Accounting connection: conn_1 (quickbooks).')
+            ->assertSuccessful();
         foreach ($transport->requests as $request) {
             self::assertSame('GET', $request->getMethod());
         }
+    }
+
+    public function test_check_command_warns_when_the_tenant_has_no_accounting_connection(): void
+    {
+        $this->fakeRuntime(
+            self::runtimeJson(200, ['status' => 'ok']),
+            self::runtimeJson(404, ['code' => 'tenant.not_found']),
+            self::runtimeJson(200, ['data' => []]),
+            self::runtimeJson(200, ['providers' => [], 'connection' => null, 'connection_state' => 'multiple']),
+        );
+        $this->artisan('integration-runtime:check', ['--tenant' => 't1'])
+            ->expectsOutputToContain('Accounting connection: multiple.')
+            ->assertSuccessful();
+    }
+
+    public function test_check_command_only_warns_on_an_unreadable_providers_response(): void
+    {
+        $this->fakeRuntime(
+            self::runtimeJson(200, ['status' => 'ok']),
+            self::runtimeJson(404, ['code' => 'tenant.not_found']),
+            self::runtimeJson(200, ['data' => []]),
+            self::runtimeJson(200, ['a', 'list']),
+        );
+        $this->artisan('integration-runtime:check', ['--tenant' => 't1'])
+            ->expectsOutputToContain('Accounting providers read failed')
+            ->assertSuccessful();
+    }
+
+    public function test_check_command_reports_an_unknown_connection_state_as_is(): void
+    {
+        $this->fakeRuntime(
+            self::runtimeJson(200, ['status' => 'ok']),
+            self::runtimeJson(404, ['code' => 'tenant.not_found']),
+            self::runtimeJson(200, ['data' => []]),
+            self::runtimeJson(200, ['providers' => [], 'connection' => null, 'connection_state' => 'paused']),
+        );
+        $this->artisan('integration-runtime:check', ['--tenant' => 't1'])
+            ->expectsOutputToContain('Accounting connection: paused (not recognised by this package version).')
+            ->doesntExpectOutputToContain('disconnect the extra one')
+            ->assertSuccessful();
     }
 
     public function test_check_command_reports_a_rejected_signature(): void
@@ -143,11 +186,70 @@ final class PackageTest extends TestCase
         self::assertStringStartsWith("# App rules\n", $agents);
         self::assertSame(1, substr_count($agents, 'integration-runtime:agent-rules:start'));
         self::assertStringContainsString('idempotency_key', $agents);
-        self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/SKILL.md');
-        self::assertJson((string) file_get_contents($base . '/.claude/skills/quickbooks-integration-runtime/quickbooks-operations.json'));
-        self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/quickbooks-operations.md');
-        self::assertJson((string) file_get_contents($base . '/.claude/skills/quickbooks-integration-runtime/accounting-operations.json'));
-        self::assertFileExists($base . '/.claude/skills/quickbooks-integration-runtime/accounting-migration.md');
+        self::assertFileExists($base . '/.claude/skills/accounting-integration-runtime/SKILL.md');
+        self::assertJson((string) file_get_contents($base . '/.claude/skills/accounting-integration-runtime/quickbooks-operations.json'));
+        self::assertFileExists($base . '/.claude/skills/accounting-integration-runtime/quickbooks-operations.md');
+        self::assertJson((string) file_get_contents($base . '/.claude/skills/accounting-integration-runtime/accounting-operations.json'));
+        self::assertFileExists($base . '/.claude/skills/accounting-integration-runtime/accounting-migration.md');
         self::assertStringContainsString('IntegrationRuntime::accounting()', $agents);
+    }
+
+    public function test_agent_rules_move_the_skill_from_its_old_name(): void
+    {
+        $base = sys_get_temp_dir() . '/ir-agent-rules-' . bin2hex(random_bytes(4));
+        $old = $base . '/.claude/skills/quickbooks-integration-runtime';
+        mkdir($old, 0777, true);
+        copy(__DIR__ . '/fixtures/legacy-SKILL-1.3.0.md', $old . '/SKILL.md');
+        file_put_contents($old . '/quickbooks-operations.md', 'old');
+        // The section 1.3.0 wrote, pointing at the old path.
+        file_put_contents($base . '/AGENTS.md', "# App\n\n<!-- integration-runtime:agent-rules:start -->\nRules: `.claude/skills/quickbooks-integration-runtime/SKILL.md`\n<!-- integration-runtime:agent-rules:end -->\n");
+        $this->app->setBasePath($base);
+
+        $this->artisan('integration-runtime:agent-rules')->assertSuccessful();
+
+        $agents = (string) file_get_contents($base . '/AGENTS.md');
+        self::assertStringNotContainsString('quickbooks-integration-runtime', $agents);
+        self::assertStringContainsString('.claude/skills/accounting-integration-runtime/SKILL.md', $agents);
+        self::assertSame(1, substr_count($agents, 'integration-runtime:agent-rules:start'));
+        self::assertStringStartsWith("# App\n", $agents);
+        self::assertFileExists($base . '/.claude/skills/accounting-integration-runtime/SKILL.md');
+        self::assertStringContainsString("name: accounting-integration-runtime\n", (string) file_get_contents($base . '/.claude/skills/accounting-integration-runtime/SKILL.md'));
+        self::assertDirectoryDoesNotExist($old);
+    }
+
+    public function test_agent_rules_keep_an_old_skill_dir_they_did_not_write(): void
+    {
+        $base = sys_get_temp_dir() . '/ir-agent-rules-' . bin2hex(random_bytes(4));
+        $old = $base . '/.claude/skills/quickbooks-integration-runtime';
+        mkdir($old, 0777, true);
+        file_put_contents($old . '/SKILL.md', "---\nname: our-own-skill\n---\n");
+        $this->app->setBasePath($base);
+
+        $this->artisan('integration-runtime:agent-rules')
+            ->doesntExpectOutputToContain('because it was edited')
+            ->assertSuccessful();
+
+        self::assertFileExists($old . '/SKILL.md');
+    }
+
+    public function test_agent_rules_keep_an_edited_old_skill_and_hidden_files(): void
+    {
+        $base = sys_get_temp_dir() . '/ir-agent-rules-' . bin2hex(random_bytes(4));
+        $old = $base . '/.claude/skills/quickbooks-integration-runtime';
+        mkdir($old, 0777, true);
+        file_put_contents($old . '/SKILL.md', file_get_contents(__DIR__ . '/fixtures/legacy-SKILL-1.3.0.md') . "\n12. Our own rule.\n");
+        $this->app->setBasePath($base);
+
+        $this->artisan('integration-runtime:agent-rules')
+            ->expectsOutputToContain('because it was edited')
+            ->assertSuccessful();
+        self::assertStringContainsString('Our own rule', (string) file_get_contents($old . '/SKILL.md'));
+
+        copy(__DIR__ . '/fixtures/legacy-SKILL-1.3.0.md', $old . '/SKILL.md');
+        file_put_contents($old . '/.notes', 'ours');
+        $this->artisan('integration-runtime:agent-rules')->assertSuccessful();
+
+        self::assertFileDoesNotExist($old . '/SKILL.md');
+        self::assertFileExists($old . '/.notes');
     }
 }

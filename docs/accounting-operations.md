@@ -13,6 +13,10 @@ Every request below is also in machine-readable form in
 in CI against the runtime's own request schema, so a request copied from it has
 the right shape. The ids and amounts in it are made up.
 
+For the ERP screens to build on top of this API (connection, settings, record
+matching, code mappings, sync status), see
+[accounting-erp-screens.md](accounting-erp-screens.md).
+
 A valid request does not mean the operation is enabled. A write refused by a
 release gate returns `403 accounting.operation_disabled`; do not loop on it.
 

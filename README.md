@@ -109,6 +109,8 @@ validator-checked example per operation, are in this package's
 [`docs/quickbooks-operations.md`](docs/quickbooks-operations.md). Moving to
 `accounting()`, including linking invoices created through it:
 [`docs/accounting-migration.md`](docs/accounting-migration.md).
+The ERP screens to build (connection, settings, matching, mappings, sync
+status): [`docs/accounting-erp-screens.md`](docs/accounting-erp-screens.md).
 
 ## Results as events
 

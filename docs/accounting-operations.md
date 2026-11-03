@@ -160,8 +160,9 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only). | Read `GET /v1/accounting/providers` capabilities before offering the action. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Ask the operator; do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
-| `accounting.operation_in_progress` (409) | A customer or item write for this ERP id, or (Xero) another update or void, or another credit memo or credit application, of this invoice, is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
+| `accounting.operation_in_progress` (409) | A customer or item write for this ERP id, or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (Xero) a resume of a refund whose job is still running, is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
 | `accounting.write_uncertain` (409, job error) | A customer, item or (Xero) invoice write may have reached the provider but was not confirmed, or the invoice the provider holds differs from what was sent. The runtime never re-sends it. A customer or item ERP id answers `accounting.operation_in_progress` until an operator reconciles it; an invoice stays with its reservation for the operator. | Do not resend, and do not resend the invoice under a new key. Check the document in the provider and ask the operator to reconcile. | `stop_and_reconcile` |
+| `accounting.refund_incomplete` (409, job error) | A Xero refund is two writes: a credit note, then its cash refund. The credit note was written; the cash refund was proved not written. `candidate_provider_id` names the open credit note, and the refund keeps its budget against the invoice and payment. | Fix the cause in Xero, then resume with the same `erp_id`, a new key and the identical body: only the cash refund is sent. Or ask the operator to continue it. Never resubmit the refund under a new `erp_id`. | `stop_and_reconcile` |
 | `accounting.link_conflict` (409) | The invoice is linked with a different line map, or its provider invoice is linked to another ERP id. | Send the recorded line map, or ask support to correct it. | `stop_and_reconcile` |
 | `accounting.provider_unavailable` (503) | Provider not enabled for the app, or a provider read was not confirmed. | Retry the same request later; escalate if it persists. | `retry_same_request` |
 | `accounting.rate_limited` (429) | Provider or app quota exhausted. | Wait for `Retry-After`, then resend the same request. | `retry_same_request` |
@@ -187,3 +188,7 @@ code, whatever its HTTP status).
    returns the original job (`idempotent_replay: true`).
 4. A dead-lettered or unknown financial outcome is reconciled, not resubmitted
    under a new key.
+5. A Xero refund is never resubmitted under a new `erp_id`. A refund ended
+   `accounting.refund_incomplete` is resumed with the same `erp_id`, a new key
+   and the identical body; a generic sync-job replay of it is refused
+   `refund.replay_requires_continue`.

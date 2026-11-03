@@ -245,7 +245,8 @@ A row gets there in one of two ways:
 | --- | --- |
 | `failed` with a documented `accounting.*` `error.code` | Use that code's action from the errors table in [accounting-operations.md](accounting-operations.md). Offer **Resubmit** only for codes whose action is to correct and resend with a new key, which proves nothing was written. |
 | `dead_lettered`, or `failed` with an unfamiliar code | "Needs review". The provider outcome may be unknown. Reconcile with the operator. Never resubmit under a new key. |
-| `cancelled`, `manually_resolved` | "Needs review". Use the operator's reconciliation result. No retry. |
+| `manually_resolved` with a `result` | An operator confirmed the write in the provider and the runtime verified it. Treat it like `completed`: record `provider_id` and `lines`. No retry. |
+| `cancelled`, `manually_resolved` without a `result` | "Needs review". Use the operator's reconciliation result. No retry. |
 
 Never offer a button that mints a new idempotency key for the same business
 event. A new key is only for a corrected resubmit after

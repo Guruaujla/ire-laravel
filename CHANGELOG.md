@@ -2,6 +2,18 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.3.2
+
+- Docs: new `docs/accounting-erp-screens.md` (the ERP screens to build:
+  connection, settings, record matching, code mappings, sync status), linked
+  from the README and `docs/accounting-operations.md`.
+- `docs/accounting-operations.md` errors table: adds
+  `accounting.write_uncertain` (`stop_and_reconcile`) and widens
+  `accounting.document_exists` and `accounting.operation_in_progress` to the
+  cases the runtime now returns.
+- No code changes; works with `ezee/integration-runtime-sdk ^1.3.1`
+  (1.3.2 adds the explicit `write_uncertain` mapping).
+
 ## 1.3.1
 
 - Requires `ezee/integration-runtime-sdk ^1.3.1` for the accounting-aware

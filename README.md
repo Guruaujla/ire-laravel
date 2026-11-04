@@ -45,7 +45,7 @@ php artisan integration-runtime:agent-rules                     # Claude Code / 
 
 ```dotenv
 INTEGRATION_RUNTIME_URL=https://staging.integrationengine.ca
-INTEGRATION_RUNTIME_APP_ID=app_erp
+INTEGRATION_RUNTIME_APP_ID=app_your_product
 INTEGRATION_RUNTIME_KEY_ID=key_...
 INTEGRATION_RUNTIME_SECRET=...
 

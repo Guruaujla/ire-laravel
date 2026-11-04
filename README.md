@@ -41,7 +41,7 @@ php artisan vendor:publish --tag=integration-runtime-config   # optional
 php artisan integration-runtime:agent-rules                     # Claude Code / Codex rules
 ```
 
-`.env` (the operator issues these values; the secret is shown once):
+`.env` (create them in Console **My apps**: Create app shows these four lines once):
 
 ```dotenv
 INTEGRATION_RUNTIME_URL=https://staging.integrationengine.ca

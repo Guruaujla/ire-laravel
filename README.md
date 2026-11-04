@@ -15,27 +15,15 @@ Laravel 12 (PHP 8.2+) or 13 (PHP 8.3+). Laravel 11 is not supported: Composer bl
 
 ## Install
 
-Both packages are published as private Git repositories,
+Both packages are public Git repositories,
 [`Guruaujla/ire-laravel`](https://github.com/Guruaujla/ire-laravel) and
-[`Guruaujla/ire-php-sdk`](https://github.com/Guruaujla/ire-php-sdk). Add both to
-the app's `composer.json`; Composer does not read a dependency's repositories,
-so the SDK repository must be listed too:
-
-```json
-"repositories": [
-    { "type": "vcs", "url": "https://github.com/Guruaujla/ire-php-sdk" },
-    { "type": "vcs", "url": "https://github.com/Guruaujla/ire-laravel" }
-]
-```
-
-Give Composer a GitHub token that can read both repositories (once per machine
-or CI runner):
+[`Guruaujla/ire-php-sdk`](https://github.com/Guruaujla/ire-php-sdk). No token is
+needed. Add both to the app's Composer repositories (Composer does not read a
+dependency's repositories, so the SDK repository must be listed too):
 
 ```bash
-composer config --global github-oauth.github.com <token>
-```
-
-```bash
+composer config repositories.ire-php-sdk vcs https://github.com/Guruaujla/ire-php-sdk
+composer config repositories.ire-laravel vcs https://github.com/Guruaujla/ire-laravel
 composer require ezee/laravel-integration-runtime:^1.0
 php artisan vendor:publish --tag=integration-runtime-config   # optional
 php artisan integration-runtime:agent-rules                     # Claude Code / Codex rules

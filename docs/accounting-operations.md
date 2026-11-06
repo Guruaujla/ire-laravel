@@ -1,8 +1,8 @@
 # Accounting operations reference
 
 The provider-neutral accounting API. The ERP integrates once; QuickBooks is the
-first provider, and adding or swapping a provider later is runtime work, not
-ERP work. Requests carry ERP ids, ERP codes and decimal-string money only. The
+first provider and Xero the second (see [Xero](#xero)), and adding or swapping a
+provider later is runtime work, not ERP work. Requests carry ERP ids, ERP codes and decimal-string money only. The
 runtime resolves the tenant's accounting connection, maps ERP ids and codes to
 the provider's records, and admits the provider's native operation with every
 native guard (release gates, duplicate protection, tax verification, rate
@@ -94,7 +94,7 @@ Rules that apply to all of them:
   a person, and build a new business event. Never retry it blindly.
 - The provider's closing date is checked on every write; a write dated on or
   before it is `409 accounting.period_closed`.
-- QuickBooks: CAD home currency only; unmapped tax codes are refused.
+- QuickBooks and Xero: CAD home currency only; unmapped tax codes are refused.
 
 ## Getting the result
 
@@ -138,6 +138,101 @@ can name its lines. Send every line, either with the `provider_line_id` from the
 old result or exactly as it was created. Invoices created outside the runtime
 are `accounting.document_unlinked`. See
 [accounting-migration.md](accounting-migration.md).
+
+## Xero
+
+Xero is the second provider behind this API. The ERP sends the same requests
+and reads the same results; only the limits below differ. **Every Xero write
+ships disabled**: until an operator enables an operation, it is refused with
+`403 accounting.operation_disabled`. `GET /v1/accounting/providers` lists
+Xero's capabilities, mapping kinds and per-operation limits (call costs
+included) once the app has a Xero provider configuration.
+
+### Connect
+
+- Self-serve apps get QuickBooks only; an operator adds the app's Xero
+  provider configuration.
+- Starting a Xero connection through the public API is not open yet:
+  `POST /v1/connections/connect-session` accepts `provider_key: "quickbooks"`
+  only in this release.
+- The customer picks one Xero organisation on Xero's consent screen. The
+  connection's `provider_account_id` is that organisation's Xero tenant id.
+  A reconnect accepts only the connection's own organisation.
+- The callback refuses the organisation and stores nothing when the consent
+  selected several organisations (`reason=multiple_orgs_selected`), when a new
+  connect added no organisation that is not already connected
+  (`reason=organisation_already_connected`), or when the organisation's base
+  currency is not CAD (`reason=unsupported_currency`). The browser comes back
+  to your `return_url` with `status=failed` and that `reason`.
+
+### Operations
+
+All nine neutral operations translate to a native Xero write, and every one
+is seeded disabled:
+
+- `accounting.customer.upsert` → `xero.contact.upsert` (a Xero Contact)
+- `accounting.item.upsert` → `xero.item.upsert` (a Xero Item)
+- `accounting.invoice.create`, `.update`, `.void` → `xero.invoice.create`,
+  `xero.invoice.update`, `xero.invoice.void` (ACCREC invoices, created
+  AUTHORISED)
+- `accounting.payment.create` → `xero.payment.create`
+- `accounting.credit_memo.create` → `xero.credit_note.create`
+- `accounting.credit_memo.apply` → `xero.credit_note.allocate`
+- `accounting.refund.create` → `xero.refund.create`
+
+The native `xero.*` operations are reachable only through this API:
+`POST /v1/operations/execute` refuses them.
+
+### Limits
+
+- **CAD home currency only.** A non-CAD organisation is refused at connect.
+  The closing date is the later of Xero's `PeriodLockDate` and
+  `EndOfYearLockDate`, re-checked just before each invoice, payment, credit
+  memo and refund write.
+- **One organisation per connection.**
+- **Daily call budget.** Xero allows 1,000 calls a day per organisation on
+  the runtime's tier; the runtime counts them per organisation over a rolling
+  day, so connections to the same organisation share them. Reads stop at 80%
+  of the day, keeping the last 20% for writes. Background status reads
+  (webhook re-reads and the hourly reconcile) get 25% of the day (250 calls);
+  reaching that share only delays status events. A read refused by the budget
+  answers `accounting.rate_limited`. Each connection's calls are paced under
+  Xero's 60 a minute.
+- **No automatic re-send.** Until Xero confirms in writing how long it keeps
+  an `Idempotency-Key`, the runtime's replay bound for Xero is 0: a write that
+  may have reached Xero is never sent again by the runtime. It ends
+  `accounting.write_uncertain` and an operator reconciles it.
+- **Tax codes.** Every line needs a mapped tax code (a Xero sales tax rate);
+  an unmapped one is refused with `accounting.mapping_missing`. Tax rates with
+  a compound component are not supported.
+- **No payment method.** Xero has no payment method mapping kind;
+  `payment_method` is accepted and ignored.
+- **Refunds are two writes.** A refund is a credit note for the refunded lines,
+  then a cash refund of that credit note's whole total from the mapped
+  `refund_account`. The credit note is never allocated to the invoice. When the
+  credit note is written and the cash refund is not, the refund ends
+  `accounting.refund_incomplete` (see the errors below). Credit memos and
+  refunds share Xero's one credit note number space.
+
+### Status events
+
+Xero sends `accounting.document.status_changed` (see [Getting the
+result](#getting-the-result)) for documents the runtime wrote, with
+`document_type` `invoice`, `payment` or `credit_application`. A credit note is
+never sent itself; the allocations the runtime made from it are sent as
+`credit_application`. An
+approved or paid invoice with a zero total has status `zero_value`. A payment
+or credit application is `deleted` when Xero reads it as deleted, or when it is
+missing from two reads at least 5 minutes apart.
+
+The runtime learns of changes two ways, both read-only and both disabled for
+now:
+
+- Xero webhooks for invoices and credit notes. The runtime re-reads each
+  document by id before it sends an event.
+- An hourly reconcile per connection that lists invoices, payments and credit
+  notes changed since its last run, for changes no webhook reported. Its first
+  run looks back to the oldest document the runtime wrote, at most 7 days.
 
 ## Errors
 

@@ -144,9 +144,11 @@ are `accounting.document_unlinked`. See
 Xero is the second provider behind this API. The ERP sends the same requests
 and reads the same results; only the limits below differ. **Every Xero write
 ships disabled**: until an operator enables an operation, it is refused with
-`403 accounting.operation_disabled`. `GET /v1/accounting/providers` lists
-Xero's capabilities, mapping kinds and per-operation limits (call costs
-included) once the app has a Xero provider configuration.
+`403 accounting.operation_disabled`. A Xero refund cannot be enabled until a
+two-step qualification probe exists. `GET /v1/accounting/providers` lists
+Xero (with `enabled: false` until the app has a Xero provider configuration),
+its capabilities, mapping kinds and per-operation limits (call costs
+included).
 
 ### Connect
 
@@ -164,6 +166,9 @@ included) once the app has a Xero provider configuration.
   (`reason=organisation_already_connected`), or when the organisation's base
   currency is not CAD (`reason=unsupported_currency`). The browser comes back
   to your `return_url` with `status=failed` and that `reason`.
+- Disconnect is not built for Xero yet: `POST /v1/connections/{id}/disconnect`
+  accepts `provider_key: "quickbooks"` only, and the runtime never revokes a
+  Xero token.
 
 ### Operations
 
@@ -180,24 +185,26 @@ is seeded disabled:
 - `accounting.credit_memo.apply` → `xero.credit_note.allocate`
 - `accounting.refund.create` → `xero.refund.create`
 
-The native `xero.*` operations are reachable only through this API:
-`POST /v1/operations/execute` refuses them.
+The native Xero invoice, payment, credit note and refund operations are
+reachable only through this API: `POST /v1/operations/execute` refuses them.
 
 ### Limits
 
 - **CAD home currency only.** A non-CAD organisation is refused at connect.
   The closing date is the later of Xero's `PeriodLockDate` and
   `EndOfYearLockDate`, re-checked just before each invoice, payment, credit
-  memo and refund write.
+  memo, credit application and refund write.
 - **One organisation per connection.**
 - **Daily call budget.** Xero allows 1,000 calls a day per organisation on
   the runtime's tier; the runtime counts them per organisation over a rolling
-  day, so connections to the same organisation share them. Reads stop at 80%
-  of the day, keeping the last 20% for writes. Background status reads
-  (webhook re-reads and the hourly reconcile) get 25% of the day (250 calls);
-  reaching that share only delays status events. A read refused by the budget
-  answers `accounting.rate_limited`. Each connection's calls are paced under
-  Xero's 60 a minute.
+  25 UTC hours, so connections to the same organisation share them. Reads stop
+  at 80% of the day, keeping the last 20% for writes. 25% of the day (250
+  calls) is held for background status reads (webhook re-reads and the hourly
+  reconcile), so interactive reads can stop at 55% when the background share
+  is unused; reaching the background share only delays status events. A read
+  refused by the budget answers `accounting.rate_limited`. Each connection's
+  calls are paced under Xero's 60 a minute; that pacing is per connection, not
+  per organisation.
 - **No automatic re-send.** Until Xero confirms in writing how long it keeps
   an `Idempotency-Key`, the runtime's replay bound for Xero is 0: a write that
   may have reached Xero is never sent again by the runtime. It ends
@@ -216,14 +223,16 @@ The native `xero.*` operations are reachable only through this API:
 
 ### Status events
 
-Xero sends `accounting.document.status_changed` (see [Getting the
-result](#getting-the-result)) for documents the runtime wrote, with
+For Xero connections the runtime sends `accounting.document.status_changed`
+(see [Getting the result](#getting-the-result)) for documents the runtime
+wrote, with
 `document_type` `invoice`, `payment` or `credit_application`. A credit note is
 never sent itself; the allocations the runtime made from it are sent as
 `credit_application`. An
 approved or paid invoice with a zero total has status `zero_value`. A payment
 or credit application is `deleted` when Xero reads it as deleted, or when it is
-missing from two reads at least 5 minutes apart.
+missing from two reads at least 5 minutes apart (a payment also only once its
+invoice's own read no longer lists it).
 
 The runtime learns of changes two ways, both read-only and both disabled for
 now:
@@ -256,7 +265,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Ask the operator; do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
 | `accounting.operation_in_progress` (409) | A customer or item write for this ERP id, or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (Xero) a resume of a refund whose job is still running, is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
-| `accounting.write_uncertain` (409, job error) | A customer, item or (Xero) invoice write may have reached the provider but was not confirmed, or the invoice the provider holds differs from what was sent. The runtime never re-sends it. A customer or item ERP id answers `accounting.operation_in_progress` until an operator reconciles it; an invoice stays with its reservation for the operator. | Do not resend, and do not resend the invoice under a new key. Check the document in the provider and ask the operator to reconcile. | `stop_and_reconcile` |
+| `accounting.write_uncertain` (409, job error) | A customer, item or (Xero) invoice, payment, credit memo, credit application or refund credit note write may have reached the provider but was not confirmed, or the invoice the provider holds differs from what was sent. The runtime never re-sends it. A customer or item ERP id answers `accounting.operation_in_progress` until an operator reconciles it; an invoice stays with its reservation for the operator. | Do not resend, and do not resend the invoice under a new key. Check the document in the provider and ask the operator to reconcile. | `stop_and_reconcile` |
 | `accounting.refund_incomplete` (409, job error) | A Xero refund is two writes: a credit note, then its cash refund. The credit note was written and verified; the cash refund was proved not written. `candidate_provider_id` names the open credit note, and the refund keeps its budget against the invoice and payment. | When the cash refund was refused before it was sent (no step-2 row, or one with no provider-call clock; the message says `was not written`): fix the cause in Xero, then resume with the same `erp_id`, a new key and the same credit-note part (`refund_account` and `reference` may change): only the cash refund is sent. A cause of `xero.period_closed` (a lock date moved after the credit note) keeps the refund's frozen `date`: reopen the period in Xero, then resume. When Xero refused the cash refund after it was sent (the message says `was refused by Xero`), it is never re-sent for that `erp_id` and a resume sends nothing: ask the operator. Or ask the operator to reconcile it. Never resubmit the refund under a new `erp_id`. A refund credit note that did not verify answers `accounting.write_uncertain` instead, and is resumed only after the operator reconciles it. | `stop_and_reconcile` |
 | `accounting.link_conflict` (409) | The invoice is linked with a different line map, or its provider invoice is linked to another ERP id. | Send the recorded line map, or ask support to correct it. | `stop_and_reconcile` |
 | `accounting.provider_unavailable` (503) | Provider not enabled for the app, or a provider read was not confirmed. | Retry the same request later; escalate if it persists. | `retry_same_request` |

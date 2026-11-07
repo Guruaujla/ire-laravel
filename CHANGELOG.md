@@ -2,6 +2,17 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.3.3
+
+- Webhooks: with `ezee/integration-runtime-sdk` 1.3.3 (run
+  `composer update ezee/integration-runtime-sdk`), the receiver accepts
+  `quickbooks.transaction.status_changed` and event types this version does
+  not know yet, and fires `WebhookReceived` for them. Before, an endpoint
+  subscribed to all events answered 401 to those deliveries.
+- Docs and config comments: add the webhook in the Console on your app page
+  (**Webhooks**); its Name is `INTEGRATION_RUNTIME_WEBHOOK_KEY_ID`.
+- No code changes in this package; works with `ezee/integration-runtime-sdk ^1.3.1`.
+
 ## 1.3.2
 
 - Docs: new `docs/accounting-erp-screens.md` (the ERP screens to build:

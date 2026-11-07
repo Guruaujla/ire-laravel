@@ -39,7 +39,7 @@ INTEGRATION_RUNTIME_SECRET=...
 
 # Optional: completion webhooks
 INTEGRATION_RUNTIME_WEBHOOKS=true
-INTEGRATION_RUNTIME_WEBHOOK_KEY_ID=whk_...
+INTEGRATION_RUNTIME_WEBHOOK_KEY_ID=<the webhook Name from the Console>
 INTEGRATION_RUNTIME_WEBHOOK_SECRET=...
 ```
 
@@ -141,8 +141,9 @@ listeners must be idempotent on `jobId`.
 
 **Webhook receiver.** With `INTEGRATION_RUNTIME_WEBHOOKS=true` the package
 registers `POST /integration-runtime/webhooks` (no CSRF or session middleware).
-Ask the operator to register `https://your-app/integration-runtime/webhooks`
-for your app; they give you the endpoint key and secret. The controller verifies
+Add `https://your-app/integration-runtime/webhooks` on your app page in the
+Console (**Webhooks**). The webhook's Name is its key ID; the page shows the
+`.env` lines once, including the secret. The controller verifies
 the signature over the raw request target and body, and returns 401 on failure.
 It then reads the job (one signed GET) and fires events from the job's current
 state: the webhook body carries no `result`, and a delayed delivery can be

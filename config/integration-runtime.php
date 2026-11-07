@@ -14,8 +14,8 @@ return [
     'timeout' => (float) env('INTEGRATION_RUNTIME_TIMEOUT', 15),
 
     'webhooks' => [
-        // Register the receiver route. The operator registers its public
-        // HTTPS URL for your app and gives you the endpoint key and secret.
+        // Register the receiver route. Add its public HTTPS URL on your app
+        // page in the Console (Webhooks); the webhook's Name is the key ID.
         'enabled' => (bool) env('INTEGRATION_RUNTIME_WEBHOOKS', false),
         'path' => env('INTEGRATION_RUNTIME_WEBHOOK_PATH', 'integration-runtime/webhooks'),
 

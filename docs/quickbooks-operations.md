@@ -142,8 +142,8 @@ the source of truth.
   `failed`, `dead_lettered`, `cancelled` and `manually_resolved` are terminal.
   `queued` and `processing` mean keep polling the same URL.
 - **Webhooks**: the runtime POSTs signed `sync_job.completed`,
-  `sync_job.dead_lettered` and `sync_job.resolved` events to an endpoint the
-  operator registers for your app. Verify the signature over the raw body, dedupe
+  `sync_job.dead_lettered` and `sync_job.resolved` events to an endpoint you
+  add on your app page (**Webhooks**; its Name is the key ID). Verify the signature over the raw body, dedupe
   on `delivery_id`, return 2xx quickly, then read the job (the webhook body carries no `result`). The SDKs ship a verifier
   (PHP `WebhookVerifier`; Laravel verifies the route automatically). Delivery is
   at-least-once, can arrive out of order, and can occasionally be lost, so keep a

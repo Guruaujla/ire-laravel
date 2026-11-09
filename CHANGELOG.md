@@ -2,7 +2,7 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
-## Unreleased (1.3.4)
+## 1.3.4
 
 - The Laravel ERP example now ships in this repository, at
   `examples/laravel-erp`, so each release tag carries the example tested with

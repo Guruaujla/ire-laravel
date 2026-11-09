@@ -153,10 +153,18 @@ included).
 ### Connect
 
 - Self-serve apps get QuickBooks only; an operator adds the app's Xero
-  provider configuration.
-- Starting a Xero connection through the public API is not open yet:
-  `POST /v1/connections/connect-session` accepts `provider_key: "quickbooks"`
-  only in this release.
+  provider configuration. Without it, a Xero connect is refused
+  `403 authz.provider_not_enabled`.
+- Start a Xero connection with the same signed
+  `POST /v1/connections/connect-session` request as QuickBooks, with
+  `provider_key: "xero"`. It returns an `authorize_url` for Xero's consent
+  screen; the callback, reconnect and disconnect are the same flows.
+- Xero uses a fixed scope set. Send no `scopes`, or exactly that set; any
+  other set is refused `400 connect.scopes_not_permitted` and no session is
+  created.
+- `503 connect.provider_not_configured` means the runtime is not configured
+  for Xero in this environment. Do not retry automatically; contact the
+  runtime operator.
 - The customer picks one Xero organisation on Xero's consent screen. The
   connection's `provider_account_id` is that organisation's Xero tenant id.
   A reconnect accepts only the connection's own organisation.

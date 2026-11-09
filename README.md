@@ -99,6 +99,8 @@ validator-checked example per operation, are in this package's
 [`docs/accounting-migration.md`](docs/accounting-migration.md).
 The ERP screens to build (connection, settings, matching, mappings, sync
 status): [`docs/accounting-erp-screens.md`](docs/accounting-erp-screens.md).
+The webhook receiver contract (events, payloads, headers, signing, retries,
+dedupe): [`docs/webhooks.md`](docs/webhooks.md).
 A working version of all of this, as drop-in files for a Laravel 12/13 app
 (connect, onboarding, an outbox, result and document-state listeners), is in
 [`examples/laravel-erp`](https://github.com/Guruaujla/ire-laravel/tree/main/examples/laravel-erp).

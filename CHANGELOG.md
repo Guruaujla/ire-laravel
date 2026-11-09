@@ -2,6 +2,12 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## Unreleased
+
+- Docs: new `docs/webhooks.md`, the webhook receiver contract (event catalog,
+  payloads, headers, signature verification, retries, dedupe), linked from the
+  README. No code changes.
+
 ## 1.3.4
 
 - The Laravel ERP example now ships in this repository, at

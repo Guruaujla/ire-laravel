@@ -1,8 +1,8 @@
 # Webhooks
 
 The runtime can send your backend a signed HTTPS `POST` when something you care
-about happens: a sync job finishes, or an accounting document changes at the
-provider. This page is the receiver contract: which events exist, what each
+about happens: a sync job finishes, an accounting document changes at the
+provider, or a customer's connection needs a reconnect. This page is the receiver contract: which events exist, what each
 body contains, which headers arrive, how to verify the signature, and how
 retries and duplicates behave.
 
@@ -37,13 +37,16 @@ Owners add webhooks on the app page in the Console (**Webhooks**):
   disabled until at least one event is ticked. Ticked by default:
   `sync_job.completed`, `sync_job.dead_lettered`, `sync_job.resolved` and
   `accounting.document.status_changed`. `quickbooks.transaction.status_changed`
-  is offered but not ticked. The reserved `sync_job.failed` is not offered.
+  and the three opt-in [connection events](#connection) (`connection.connected`,
+  `connection.reconnect_required`, `connection.disconnected`) are offered but
+  not ticked. The reserved `sync_job.failed` is not offered.
 
 A webhook with **no filter** (every event type except the explicit-only ones,
 below) is never created by the Console. It exists only when it was registered
 through the developer webhooks API directly, carried over by an import or promotion, or set up by the
 runtime team. The Console shows its events as "All events except
-accounting.document.status_changed".
+accounting.document.status_changed, connection.connected,
+connection.reconnect_required, connection.disconnected".
 
 An app can have up to 5 webhooks that are active or paused. The page shows the signing **secret** once, in
 the `.env` block (`INTEGRATION_RUNTIME_WEBHOOK_SECRET`). It is 32 random bytes
@@ -57,8 +60,10 @@ then revoke the first. **Pause** stops deliveries to a webhook until you
 **Resume** it, and deliveries already waiting for it are skipped. What happens
 to events that occur while it is paused depends on the event:
 
-- `sync_job.*`: not queued for a paused webhook. They are not sent after
-  Resume.
+- `sync_job.*` and `connection.*`: not queued for a paused webhook. They are
+  not sent after Resume. A connection event that no active webhook wants when
+  it happens is not kept for a webhook added later either: read
+  `GET /v1/connections/{id}` for the current state.
 - `quickbooks.transaction.status_changed` and
   `accounting.document.status_changed`: a status change is kept only while
   **no** active webhook of the app wants it, and it can then be delivered after
@@ -125,7 +130,8 @@ or earlier the verifier rejects it as `payload_shape_invalid` and the Laravel
 receiver answers `401`, which ends the delivery as `http_4xx`. Laravel package
 1.3.4 accepts SDK 1.3.1 and later, so run
 `composer update ezee/integration-runtime-sdk` to get 1.3.3 or later; the
-receiver then answers `200` and fires `WebhookReceived`.
+receiver then answers `200` and fires `WebhookReceived`. From Laravel package
+1.5.0 it also fires `WebhookTestReceived` (`tenantId`, `endpointKey`).
 
 ## Event catalog
 
@@ -137,12 +143,16 @@ receiver then answers `200` and fires `WebhookReceived`.
 | `sync_job.failed` | **Reserved. Never sent today.** A failed job is reported once, as `sync_job.dead_lettered`. A webhook registered outside the Console can name it, but the Console does not offer it. | Yes |
 | `quickbooks.transaction.status_changed` | The runtime's verified view of a QuickBooks Invoice or Payment changed. | Yes |
 | `accounting.document.status_changed` | A document the runtime wrote for you (it has your `erp_id`) changed at the provider, in provider-neutral form. | **No: explicit-only** |
+| `connection.connected` | A connection became connected: the first connect, a reconnect, or a recovery. | **No: explicit-only** |
+| `connection.reconnect_required` | A connection's provider authorization stopped working. The customer must [reconnect](#reconnect-a-customer). | **No: explicit-only** |
+| `connection.disconnected` | A connection that had been connected was disconnected. | **No: explicit-only** |
 | `webhook.test` | An owner sent a [test event](#send-a-test-event) to this one webhook. **Not subscribable**: not offered in the Console and refused at registration. | **No: never subscribed** |
 
-**Explicit-only.** `accounting.document.status_changed` is sent only to webhooks
-whose event list names it. A webhook with no filter never receives it, so adding
-it did not change what existing receivers get. The Console ticks it by default
-for a new webhook.
+**Explicit-only.** `accounting.document.status_changed` and the three
+`connection.*` events are sent only to webhooks whose event list names them. A
+webhook with no filter never receives them, so adding them did not change what
+existing receivers get. The Console ticks `accounting.document.status_changed`
+by default for a new webhook; the `connection.*` events are opt-in.
 
 A webhook with no filter receives every other event type, and may receive event
 types added in a later release. Verify the signature, then answer `2xx` and
@@ -279,6 +289,155 @@ by your `erp_id`. Status events recorded while no active webhook wants them are
 kept and may be delivered after you add or Resume one, with the QuickBooks
 limit described under Pause above; do not rely on it, and read the status
 endpoint when you need the current state.
+
+### `connection.*`
+
+`connection.connected`, `connection.reconnect_required` and
+`connection.disconnected` share one body shape (schema
+`ConnectionStatusWebhookPayload`):
+
+```json
+{
+  "schema_version": 1,
+  "delivery_id": "0190d3e1-5a22-7b10-9c40-2f3e4a5b6c7d",
+  "event_id": "connection:0190d3e1-5a20-7a00-8b11-1c2d3e4f5a6b",
+  "event_type": "connection.reconnect_required",
+  "occurred_at": "2026-11-09T12:00:00.005Z",
+  "app_id": "app_example",
+  "tenant_id": "tnt_example_1",
+  "data": {
+    "connection": {
+      "id": "conn_example_1",
+      "provider_key": "quickbooks",
+      "status": "reconnect_required",
+      "previous_status": "connected",
+      "reason": "invalid_grant"
+    }
+  }
+}
+```
+
+`data.connection` (schema `ConnectionWebhookSnapshot`):
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `id` | string | The connection id. `GET /v1/connections/{id}` for the authoritative state. |
+| `provider_key` | string | For example `quickbooks` or `xero`. |
+| `status` | string | The status the connection moved to: `connected`, `reconnect_required` or `disconnected`. A snapshot at `occurred_at`. |
+| `previous_status` | string or null | The status before: `connected`, `reconnect_required`, `disconnected` or `disabled`. `null` for the connection's first connect. |
+| `reason` | string or null | `invalid_grant` or `refresh_token_expired` (the provider authorization stopped working), `disconnect`, or `null`. More values may be added. |
+
+The body carries no company name and no provider account id. Read the
+connection for anything else.
+
+**PHP and Laravel:** subscribe after upgrading to 1.5.0
+(`composer update ezee/integration-runtime-sdk ezee/laravel-integration-runtime`).
+SDK 1.5.0 puts `data.connection` on `WebhookEvent::$connection` and adds
+`Connections::reconnect()`; Laravel package 1.5.0 fires
+`ConnectionStatusChanged` and `ConnectionReconnectRequired`. Earlier versions
+from 1.3.3 accept the deliveries (answer `200`) but fire only
+`WebhookReceived`.
+
+- **First connect.** `connection.connected` with `previous_status: null`. This
+  holds even when an earlier attempt was abandoned and disconnected, so the
+  first connect comes from `disconnected`.
+- **No disconnect without a connect.** If a connect is abandoned before the
+  customer finished authorizing and the connection is then disconnected, no
+  `connection.disconnected` is sent: you never got a `connection.connected`
+  for it.
+- **Not sent:** a change to or from `disabled` (an administrative state the
+  runtime team sets) has no event of its own.
+- **Latency.** Connection events are sent by a job that runs every minute, so
+  one normally arrives up to about a minute after the change, plus the usual
+  delivery time. When many connections change at once (for example a provider
+  outage), the job sends a bounded number each minute (a few dozen per
+  product, fewer the more webhooks subscribe), oldest first, and the rest
+  follow over the next minutes. Delivery of a sent event can also start a
+  minute later than usual when the job is busy.
+- **Order.** As with every event, a later one can arrive first, for example a
+  `connection.connected` after a reconnect before the `connection.reconnect_required`
+  that preceded it. Read `GET /v1/connections/{id}` and act on its `status`, not
+  on the event.
+
+## Reconnect a customer
+
+`connection.reconnect_required` means the provider no longer accepts the
+connection's authorization (for example the customer revoked access in
+QuickBooks, or the authorization expired). Calls on that connection fail until
+the customer reconnects. There is no hosted reconnect page: you build the
+button and the email, and both start a new connect session for the **same
+tenant and provider**: `POST /v1/connections/connect-session` reconnects the
+tenant's existing connection.
+
+1. Subscribe the webhook to `connection.reconnect_required` (and
+   `connection.connected`, to clear your banner when it is fixed).
+2. On the event, read `GET /v1/connections/{id}`. If `status` is still
+   `reconnect_required`, mark the customer's integration as needing attention.
+3. Show a **Reconnect** button in your app, and send the customer's admin an
+   email that links to a page of yours that starts the reconnect. Never put an
+   `authorize_url` in an email: it expires. Start the session when the person
+   clicks.
+4. After the provider redirects back to your `return_url`, check `state`, then
+   read the connection named by the redirect's `connection_id` and require
+   `status === "connected"`, exactly as for a first connect.
+
+With the PHP SDK (`ezee/integration-runtime-sdk` 1.5.0 or later),
+`Connections::reconnect()` reads the connection's `provider_key` and starts the
+session:
+
+```php
+// GET /integrations/reconnect, behind your own login and permission check.
+$state = bin2hex(random_bytes(16));
+session(['ir_connect_state' => $state]);
+$session = $runtime->connections()->reconnect(
+    $tenantId,                                  // your customer's runtime tenant
+    $connectionId,                              // data.connection.id from the event
+    'https://erp.example.com/integrations/return',
+    $state,
+);
+return redirect()->away($session['authorize_url']);
+```
+
+Without the SDK, read `provider_key` from `GET /v1/connections/{id}` and call
+`POST /v1/connections/connect-session` with the same `tenant_id`, that
+`provider_key`, your `return_url` and a fresh `state`.
+
+A Laravel listener (package 1.5.0 or later fires `ConnectionReconnectRequired`
+for this event, and `ConnectionStatusChanged` for every connection event):
+
+```php
+use Ezee\IntegrationRuntime\Laravel\Events\ConnectionReconnectRequired;
+use Ezee\IntegrationRuntime\Laravel\Facades\IntegrationRuntime;
+
+Event::listen(function (ConnectionReconnectRequired $e) {
+    $connection = IntegrationRuntime::connections()->get($e->tenantId, $e->connectionId);
+    if (($connection['status'] ?? null) !== 'reconnect_required') {
+        return; // already fixed, or a late delivery
+    }
+    $company = Company::where('runtime_tenant_id', $e->tenantId)->firstOrFail();
+    $company->update(['accounting_needs_reconnect' => true]);
+    Mail::to($company->billingAdmin())->queue(new ReconnectAccounting($company));
+});
+```
+
+An email template:
+
+> **Subject:** Reconnect {{provider}} to keep your invoices in sync
+>
+> Hi {{name}},
+>
+> {{your app}} can no longer reach your {{provider}} company, so new invoices
+> and payments are not being sent to it. This happens when access is revoked
+> in {{provider}} or expires.
+>
+> Sign in and click **Reconnect** on the Integrations page:
+> {{https://erp.example.com/integrations}}
+>
+> It takes about a minute.
+
+Link to your own page (the Integrations page, or the reconnect route behind your
+login), not to the provider. Clear the banner when `connection.connected`
+arrives, or when a read shows `status === "connected"`.
 
 ## Headers
 
@@ -475,7 +634,8 @@ re-authorized or the document link changed since the event, it ends as
   to another), dedupe on `event_id` as well.
 - **Order is not guaranteed.** A later event can arrive first. Never infer order
   from arrival. Use `data.sequence` (accounting documents) or
-  `projection_revision` (QuickBooks transactions), and for jobs read the job.
+  `projection_revision` (QuickBooks transactions), and for jobs and connections
+  read the job or the connection.
 - **Events can be lost** in rare failure cases. Poll as a backstop.
 
 ## Failure codes

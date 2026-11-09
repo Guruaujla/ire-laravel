@@ -135,7 +135,15 @@ Event::listen(function (AccountingDocumentStatusChanged $e) {
 | `SyncJobFailed` | `failed` or `cancelled`, seen by polling. |
 | `SyncJobResolved` | An operator closed the job manually. |
 | `AccountingDocumentStatusChanged` | A document the runtime wrote changed in the provider (paid, voided, edited). Needs the endpoint subscribed to `accounting.document.status_changed`. Has `tenantId`, `connectionId`, `sequence`, `document`. |
+| `ConnectionStatusChanged` | A connection's status changed (`connection.connected`, `connection.reconnect_required`, `connection.disconnected`). Needs the endpoint subscribed to those events. Has `tenantId`, `connectionId`, `providerKey`, `status`, `previousStatus`, `reason`. |
+| `ConnectionReconnectRequired` | Also fired for `connection.reconnect_required` (a subclass of `ConnectionStatusChanged`): show a Reconnect button and email the customer; see [`docs/webhooks.md`](docs/webhooks.md#reconnect-a-customer). |
+| `WebhookTestReceived` | A `webhook.test` an owner sent from the Console. Has `tenantId`, `endpointKey`. |
 | `WebhookReceived` | Every verified, first-seen delivery (raw `WebhookEvent`). |
+
+The connection events and `WebhookTestReceived` need this package at 1.5.0 and
+`ezee/integration-runtime-sdk` 1.3.3 or later (run `composer update
+ezee/integration-runtime-sdk`; this package's constraint still allows
+`^1.3.1`). `Connections::reconnect()` needs the SDK at 1.5.0.
 
 Each `SyncJob*` event has `tenantId`, `jobId`, `status`, `operationKey`,
 `externalObjectId`, `lastErrorCode`, `source` (`webhook` or `poll`) and `job`.
@@ -155,7 +163,8 @@ the signature over the raw request target and body, and returns 401 on failure.
 It then reads the job (one signed GET) and fires events from the job's current
 state: the webhook body carries no `result`, and a delayed delivery can be
 older than the job. An `accounting.document.status_changed` delivery fires
-`AccountingDocumentStatusChanged` directly. It fires the events, then records `delivery_id` in the cache for 7 days and
+`AccountingDocumentStatusChanged` directly, and a `connection.*` delivery fires
+`ConnectionStatusChanged` (plus `ConnectionReconnectRequired`) directly. It fires the events, then records `delivery_id` in the cache for 7 days and
 returns 200; a repeat of a recorded delivery gets 200 without events. While a
 delivery is being handled it holds a short claim (`claim_ttl_seconds`, 120 s),
 and a concurrent repeat gets 429 so the runtime retries it later. If a listener

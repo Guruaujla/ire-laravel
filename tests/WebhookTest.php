@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace Ezee\IntegrationRuntime\Laravel\Tests;
 
 use Ezee\IntegrationRuntime\Laravel\Events\AccountingDocumentStatusChanged;
+use Ezee\IntegrationRuntime\Laravel\Events\ConnectionReconnectRequired;
+use Ezee\IntegrationRuntime\Laravel\Events\ConnectionStatusChanged;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobCompleted;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobDeadLettered;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobResolved;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
+use Ezee\IntegrationRuntime\Laravel\Events\WebhookTestReceived;
 use Ezee\IntegrationRuntime\Signer;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -113,6 +116,80 @@ final class WebhookTest extends TestCase
             && $e->document['erp_id'] === 'INV-1'
             && $e->document['status'] === 'paid');
         Event::assertNotDispatched(SyncJobCompleted::class);
+    }
+
+    /** @param array<string, mixed> $connection */
+    private static function connectionBody(string $deliveryId, string $type, array $connection): string
+    {
+        return json_encode([
+            'schema_version' => 1,
+            'delivery_id' => $deliveryId,
+            'event_id' => 'connection:0190d3c4-8e21-7f3a-9b64-2c1f5a8e4d07',
+            'event_type' => $type,
+            'occurred_at' => '2026-11-09T12:00:00.005Z',
+            'app_id' => 'app_erp',
+            'tenant_id' => 'tnt_1',
+            'data' => ['connection' => $connection],
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    public function test_reconnect_required_fires_both_connection_events_without_a_read(): void
+    {
+        $this->fakeRuntime(); // any runtime call would fail the test
+        Event::fake();
+        $body = self::connectionBody('dlv_conn_1', 'connection.reconnect_required', [
+            'id' => 'conn_1', 'provider_key' => 'quickbooks', 'status' => 'reconnect_required',
+            'previous_status' => 'connected', 'reason' => 'invalid_grant',
+        ]);
+        $this->deliver($body)->assertOk();
+        $this->deliver($body)->assertOk(); // redelivery, same delivery_id
+
+        Event::assertDispatchedTimes(ConnectionStatusChanged::class, 1);
+        Event::assertDispatchedTimes(ConnectionReconnectRequired::class, 1);
+        Event::assertDispatched(ConnectionReconnectRequired::class, fn(ConnectionReconnectRequired $e) => $e->tenantId === 'tnt_1'
+            && $e->connectionId === 'conn_1'
+            && $e->providerKey === 'quickbooks'
+            && $e->status === 'reconnect_required'
+            && $e->previousStatus === 'connected'
+            && $e->reason === 'invalid_grant');
+        Event::assertNotDispatched(SyncJobCompleted::class);
+    }
+
+    public function test_connected_and_disconnected_fire_only_the_status_event(): void
+    {
+        $this->fakeRuntime();
+        Event::fake();
+        $this->deliver(self::connectionBody('dlv_conn_2', 'connection.connected', [
+            'id' => 'conn_2', 'provider_key' => 'xero', 'status' => 'connected', 'previous_status' => null, 'reason' => null,
+        ]))->assertOk();
+        $this->deliver(self::connectionBody('dlv_conn_3', 'connection.disconnected', [
+            'id' => 'conn_2', 'provider_key' => 'xero', 'status' => 'disconnected', 'previous_status' => 'connected', 'reason' => 'disconnect',
+        ]))->assertOk();
+
+        Event::assertDispatchedTimes(ConnectionStatusChanged::class, 2);
+        Event::assertDispatched(ConnectionStatusChanged::class, fn(ConnectionStatusChanged $e) => $e->status === 'connected' && $e->previousStatus === null);
+        Event::assertDispatched(ConnectionStatusChanged::class, fn(ConnectionStatusChanged $e) => $e->status === 'disconnected' && $e->reason === 'disconnect');
+        Event::assertNotDispatched(ConnectionReconnectRequired::class);
+    }
+
+    public function test_the_test_event_is_acknowledged_and_fires_its_event(): void
+    {
+        $this->fakeRuntime();
+        Event::fake();
+        $this->deliver(json_encode([
+            'schema_version' => 1,
+            'delivery_id' => 'dlv_test',
+            'event_id' => 'webhook.test:0190d3d0-2b10-7f00-9a11-5c6d7e8f9a0b',
+            'event_type' => 'webhook.test',
+            'occurred_at' => '2026-08-04T09:15:00.120Z',
+            'app_id' => 'app_erp',
+            'tenant_id' => 'tnt_1',
+            'data' => ['test' => ['endpoint_key' => 'primary', 'requested_by' => 'developer']],
+        ], JSON_THROW_ON_ERROR))->assertOk();
+
+        Event::assertDispatched(WebhookTestReceived::class, fn(WebhookTestReceived $e) => $e->tenantId === 'tnt_1' && $e->endpointKey === 'primary');
+        Event::assertDispatchedTimes(WebhookReceived::class, 1);
+        Event::assertNotDispatched(ConnectionStatusChanged::class);
     }
 
     public function test_dead_letter_maps_to_its_event(): void

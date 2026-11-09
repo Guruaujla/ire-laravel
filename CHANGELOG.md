@@ -2,6 +2,28 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.5.0
+
+- The webhook receiver fires `ConnectionStatusChanged` for every
+  `connection.connected`, `connection.reconnect_required` and
+  `connection.disconnected` delivery (`tenantId`, `connectionId`,
+  `providerKey`, `status`, `previousStatus`, `reason`), and also
+  `ConnectionReconnectRequired` (a subclass) for `connection.reconnect_required`.
+  The events are opt-in: tick them on the webhook in the Console. Subscribe
+  after upgrading to 1.5.0; with 1.4.0 the deliveries are acknowledged and
+  only fire `WebhookReceived`.
+- The receiver fires `WebhookTestReceived` (`tenantId`, `endpointKey`) for a
+  `webhook.test` delivery an owner sends from the Console.
+- SDK minimums: `composer.json` still allows `ezee/integration-runtime-sdk`
+  `^1.3.1`, but the receiver needs 1.3.3 or later to accept these deliveries
+  (1.3.2 and earlier answer `401` to an event type they do not know). The
+  events read the verified body directly, so 1.3.3 is enough for them;
+  `Connections::reconnect()` (the Reconnect button) needs SDK 1.5.0. Run
+  `composer update ezee/integration-runtime-sdk`.
+- Docs: `docs/webhooks.md` documents the `connection.*` events and a
+  "Reconnect a customer" recipe (a Reconnect button and an email template);
+  the README event table lists the new events.
+
 ## 1.4.0
 
 - No code changes in this package. With `ezee/integration-runtime-sdk` 1.4.0,

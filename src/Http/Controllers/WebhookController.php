@@ -8,8 +8,11 @@ use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Exception\WebhookVerificationException;
 use Ezee\IntegrationRuntime\Jobs;
 use Ezee\IntegrationRuntime\Laravel\Events\AccountingDocumentStatusChanged;
+use Ezee\IntegrationRuntime\Laravel\Events\ConnectionReconnectRequired;
+use Ezee\IntegrationRuntime\Laravel\Events\ConnectionStatusChanged;
 use Ezee\IntegrationRuntime\Laravel\Events\Factory;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
+use Ezee\IntegrationRuntime\Laravel\Events\WebhookTestReceived;
 use Ezee\IntegrationRuntime\WebhookEvent;
 use Ezee\IntegrationRuntime\WebhookVerifier;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
@@ -20,12 +23,14 @@ use Illuminate\Http\Response;
 use Psr\Log\LoggerInterface;
 
 /**
- * Receives `sync_job.*` and `accounting.document.status_changed` deliveries:
- * verify first, dedupe on delivery_id,
+ * Receives `sync_job.*`, `accounting.document.status_changed`, `connection.*`
+ * and `webhook.test` deliveries: verify first, dedupe on delivery_id,
  * fire events, answer 2xx fast. Heavy listener work belongs on a queue.
  */
 final class WebhookController
 {
+    private const CONNECTION_EVENTS = ['connection.connected', 'connection.reconnect_required', 'connection.disconnected'];
+
     public function __invoke(
         Request $request,
         WebhookVerifier $verifier,
@@ -70,6 +75,20 @@ final class WebhookController
             $events->dispatch(new WebhookReceived($event));
             if ($event->eventType === WebhookEvent::ACCOUNTING_DOCUMENT_STATUS_CHANGED) {
                 $events->dispatch(new AccountingDocumentStatusChanged($event->tenantId, $event->connectionId(), $event->sequence(), $event->document, $event));
+            }
+            // Literal event types, not SDK constants: they also work with an
+            // SDK older than 1.5.0, which accepts these as unknown types.
+            if (in_array($event->eventType, self::CONNECTION_EVENTS, true)) {
+                $events->dispatch(ConnectionStatusChanged::fromWebhook($event));
+                if ($event->eventType === 'connection.reconnect_required') {
+                    $events->dispatch(ConnectionReconnectRequired::fromWebhook($event));
+                }
+            }
+            if ($event->eventType === 'webhook.test') {
+                $data = $event->payload['data'] ?? null;
+                $test = is_array($data) && is_array($data['test'] ?? null) ? $data['test'] : [];
+                $key = $test['endpoint_key'] ?? null;
+                $events->dispatch(new WebhookTestReceived($event->tenantId, is_string($key) ? $key : null, $event));
             }
             $jobId = $event->jobId();
             $status = $event->job['status'] ?? null;

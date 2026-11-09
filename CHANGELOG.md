@@ -2,6 +2,16 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## Unreleased (1.3.4)
+
+- The Laravel ERP example now ships in this repository, at
+  `examples/laravel-erp`, so each release tag carries the example tested with
+  it. Copy its files into your Laravel 12/13 app; see its README. Composer
+  does not install `examples/` into `vendor/` (`export-ignore`).
+- `docs/accounting-erp-screens.md` links the example at its new location.
+- No code changes in this package. 1.3.4 is the first tag with
+  `examples/laravel-erp`; earlier tags have no `examples/` folder.
+
 ## 1.3.3
 
 - Webhooks: with `ezee/integration-runtime-sdk` 1.3.3 (run

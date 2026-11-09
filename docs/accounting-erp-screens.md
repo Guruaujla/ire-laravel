@@ -9,7 +9,9 @@ button, nothing here names QuickBooks.
 
 Request and response shapes, and every error code, are in
 [accounting-operations.md](accounting-operations.md). The example Laravel app
-in the SDK repository (`examples/laravel-erp`) implements the backend side:
+in the Laravel package repository
+([`examples/laravel-erp`](https://github.com/Guruaujla/ire-laravel/tree/main/examples/laravel-erp))
+implements the backend side:
 connect, match, bind, push and document state.
 
 | Screen | Who | SDK calls |

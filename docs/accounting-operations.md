@@ -182,10 +182,20 @@ across organisations). It removes only this organisation's Xero connection.
 
 - `204` is complete. The connection is `disconnected` either way.
 - `204` with `X-IR-Provider-Cleanup: customer_action_required` means the
-  Xero grant was already dead, so the runtime disconnected locally only. Ask
-  the customer to remove the app in Xero only if no other system uses it.
-- A plain `204` can also mean another live connection shares the same Xero
-  connection; the runtime then leaves it in place on purpose.
+  Xero grant was already dead, so the runtime disconnected locally only and
+  the organisation may still list the app. The Xero user who connected it
+  can review it at https://apps.xero.com/connected; ask them to remove the
+  app there only if no other system uses it.
+- A plain `204` can also mean another live connection of this integration
+  shares the same Xero connection (several connections may share one
+  organisation, never one Xero connection); the runtime then leaves it in
+  place on purpose, also when this connection's own grant was dead.
+- Status events still undelivered when the connection becomes
+  `disconnected` are not delivered: status delivery requires a connected
+  connection, so pending events are retired and a queued delivery is dropped
+  as stale. Changes made in Xero after the last status event are not seen
+  either. Re-read the documents you care about (`GET /v1/accounting/...`)
+  before you disconnect.
 - `409 connection.recovery_pending` means writes to this connection are in
   doubt and an operator must settle them first. The body counts them
   (`invoice_writes`, `adjustment_writes`, `master_commands`); nothing was

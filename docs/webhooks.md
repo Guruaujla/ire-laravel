@@ -76,7 +76,9 @@ to events that occur while it is paused depends on the event:
 
 The page also lists recent deliveries for a customer, with their status
 (`pending`, `enqueued`, `delivered`, `dead_lettered` or `skipped`), attempt
-count, last HTTP status and failure code (see [Failure codes](#failure-codes)).
+count, last HTTP status, failure code (see [Failure codes](#failure-codes)) and
+how many times an owner redelivered it (see
+[Redeliver a failed delivery](#redeliver-a-failed-delivery)).
 
 ## Send a test event
 
@@ -290,7 +292,7 @@ endpoint when you need the current state.
 | `X-IR-Delivery-Id` | **no** | Copy of `delivery_id`. |
 | `X-IR-Event-Id` | **no** | Copy of `event_id`. |
 | `X-IR-Event-Type` | **no** | Copy of `event_type`. |
-| `X-IR-Attempt` | **no** | 1-based attempt number (at most 5). Not in the body. |
+| `X-IR-Attempt` | **no** | 1-based attempt number (at most 5). Restarts at 1 on an owner [redelivery](#redeliver-a-failed-delivery). Not in the body. |
 | `X-IR-Correlation-Id` | no | Present when the event carries one. For support requests. |
 | `Content-Type` | no | `application/json` |
 | `Accept` | no | `application/json` |
@@ -428,12 +430,46 @@ never shorter.
   signature is right.
 - Never redirect.
 
+## Redeliver a failed delivery
+
+When a delivery is `dead_lettered`, an owner can fix the receiver and then
+click **Redeliver** on that row in the recent deliveries for the customer. The
+runtime sends the same delivery again through the normal path:
+
+- **Same `delivery_id` and `event_id`, same body.** The stored body is resent
+  byte for byte, so a receiver that already processed it dedupes it as usual.
+- **Fresh signature.** `X-IR-Timestamp`, `X-IR-Nonce` and `X-IR-Signature` are
+  new, like on any retry. Verify it the same way.
+- **`X-IR-Attempt` restarts at 1**, and the delivery gets the full
+  [retry schedule](#retries) again (5 attempts).
+- **At most 5 redeliveries** per delivery. After that the button is gone and the
+  runtime answers `developer.redelivery_limit_reached`.
+- **Only `dead_lettered` deliveries.** Any other status answers
+  `developer.delivery_not_redeliverable`; so does a second click while the first
+  redelivery is still in flight. One exception: if you pause the webhook (or the
+  runtime team locks it) after clicking **Redeliver** but before it is sent, the
+  delivery ends as `skipped` with `endpoint_inactive`. Resume the webhook and
+  you can redeliver it again; it counts toward the same limit of 5.
+- The webhook must be **active** and not locked: a paused webhook answers
+  `developer.webhook_not_active`, a locked one `developer.webhook_locked` and a
+  revoked one `developer.webhook_revoked`.
+- Only owners can redeliver.
+- **Not test events.** A `webhook.test` delivery cannot be redelivered
+  (`developer.delivery_not_redeliverable`). [Send a new test event](#send-a-test-event)
+  instead.
+
+A `quickbooks.transaction.status_changed` or `accounting.document.status_changed`
+delivery is checked again before it is sent: if the connection was
+re-authorized or the document link changed since the event, it ends as
+`skipped` with a `*_status_binding_stale` code instead.
+
 ## Duplicates and ordering
 
 - **Duplicates happen.** The same delivery can arrive more than once, for
   example when your `2xx` is lost on the way back. Keep `delivery_id` with a
   unique constraint, and answer `2xx` without doing the work again when you see
-  one twice.
+  one twice. An owner [redelivery](#redeliver-a-failed-delivery) also sends the
+  same `delivery_id` again.
 - **`event_id` is shared** by every webhook that receives the event. If two of
   your webhooks point at the same system (for example while you move from one
   to another), dedupe on `event_id` as well.

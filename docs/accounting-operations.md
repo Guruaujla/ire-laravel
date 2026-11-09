@@ -162,13 +162,37 @@ included).
   A reconnect accepts only the connection's own organisation.
 - The callback refuses the organisation and stores nothing when the consent
   selected several organisations (`reason=multiple_orgs_selected`), when a new
-  connect added no organisation that is not already connected
-  (`reason=organisation_already_connected`), or when the organisation's base
-  currency is not CAD (`reason=unsupported_currency`). The browser comes back
-  to your `return_url` with `status=failed` and that `reason`.
-- Disconnect is not built for Xero yet: `POST /v1/connections/{id}/disconnect`
-  accepts `provider_key: "quickbooks"` only, and the runtime never revokes a
-  Xero token.
+  connect added no organisation that is not already connected, or when the
+  organisation's Xero connection is already in use by another live connection
+  of this integration (both `reason=organisation_already_connected`), or when
+  the organisation's base currency is not CAD (`reason=unsupported_currency`).
+  The browser comes back to your `return_url` with `status=failed` and that
+  `reason`.
+- For `organisation_already_connected`, tell the customer: "This organisation
+  is already connected through this integration. If it should be free,
+  disconnect it from the other system first. Do not remove the app in Xero
+  unless you know no other system uses it."
+
+### Disconnect
+
+`POST /v1/connections/{id}/disconnect` accepts `provider_key: "xero"` with the
+connection's Xero tenant id as `provider_account_id`. The runtime never
+revokes a Xero token (one revoke would end every grant of that Xero user,
+across organisations). It removes only this organisation's Xero connection.
+
+- `204` is complete. The connection is `disconnected` either way.
+- `204` with `X-IR-Provider-Cleanup: customer_action_required` means the
+  Xero grant was already dead, so the runtime disconnected locally only. Ask
+  the customer to remove the app in Xero only if no other system uses it.
+- A plain `204` can also mean another live connection shares the same Xero
+  connection; the runtime then leaves it in place on purpose.
+- `409 connection.recovery_pending` means writes to this connection are in
+  doubt and an operator must settle them first. The body counts them
+  (`invoice_writes`, `adjustment_writes`, `master_commands`); nothing was
+  changed. Retry with the same idempotency key after the operator has
+  finished.
+- `503 oauth.disconnect_retryable` means retry with the same idempotency key
+  and fresh HMAC values.
 
 ### Operations
 

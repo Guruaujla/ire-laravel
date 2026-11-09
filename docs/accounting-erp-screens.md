@@ -67,12 +67,14 @@ tenant's connections (`id`, `provider_key`, `status`). It does not return the
 company id, so a lost row can be found but not disconnected from the ERP; ask
 support.
 
-**Connect** calls `connections()->start($tenantId, $returnUrl, $state)` and
+**Connect** calls `connections()->start($tenantId, $returnUrl, $state)` (add
+`'xero'` as a fourth argument to connect Xero, SDK 1.4.0 or later) and
 redirects to `authorize_url`. On return, check the one-time `state`, then
 confirm with `connections()->get()`. The redirect's `status` is only a hint.
 The example app's `AccountingController::connect` and `return` do exactly
-this. The SDK's `start()` connects QuickBooks; when another provider ships,
-the SDK adds a provider choice and this button becomes one per provider.
+this. Without the fourth argument `start()` connects QuickBooks; offer one
+**Connect** button per provider the app is configured for (see
+`providers`).
 
 **One provider per customer.** If the customer already has a connection to
 a different accounting provider that is not disconnected (including one that

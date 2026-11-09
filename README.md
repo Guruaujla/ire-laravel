@@ -60,6 +60,7 @@ $tenant = IntegrationRuntime::tenants()->registerOrResolveTenant((string) $team-
 
 // 2. Connect the provider: redirect the admin, then confirm on return.
 $session = IntegrationRuntime::connections()->start($tenant['tenant_id'], route('accounting.return'), $state);
+// Xero instead (SDK 1.4.0+): ->start($tenantId, route('accounting.return'), $state, 'xero')
 return redirect()->away($session['authorize_url']);
 // On return: check $state, then require status === 'connected':
 $connection = IntegrationRuntime::connections()->get($tenantId, $request->query('connection_id'));

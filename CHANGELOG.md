@@ -2,8 +2,14 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
-## Unreleased
+## 1.4.0
 
+- No code changes in this package. With `ezee/integration-runtime-sdk` 1.4.0,
+  `IntegrationRuntime::connections()->start($tenantId, $returnUrl, $state, 'xero')`
+  starts a Xero connection; without the fourth argument it connects
+  QuickBooks, as before.
+- `docs/accounting-operations.md` and `docs/accounting-erp-screens.md` show
+  the Xero connect call.
 - Docs: new `docs/webhooks.md`, the webhook receiver contract (event catalog,
   payloads, headers, signature verification, retries, dedupe), linked from the
   README. No code changes.

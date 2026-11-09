@@ -158,7 +158,10 @@ included).
 - Start a Xero connection with the same signed
   `POST /v1/connections/connect-session` request as QuickBooks, with
   `provider_key: "xero"`. It returns an `authorize_url` for Xero's consent
-  screen; the callback, reconnect and disconnect are the same flows.
+  screen; the callback, reconnect and disconnect are the same flows. With the
+  PHP SDK (1.4.0 or later), pass the provider as the fourth argument:
+  `connections()->start($tenantId, $returnUrl, $state, 'xero')`. Earlier
+  versions always send `quickbooks`; send the request yourself for Xero there.
 - Xero uses a fixed scope set. Send no `scopes`, or exactly that set; any
   other set is refused `400 connect.scopes_not_permitted` and no session is
   created.

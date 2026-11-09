@@ -13,6 +13,10 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 - Docs: new `docs/webhooks.md`, the webhook receiver contract (event catalog,
   payloads, headers, signature verification, retries, dedupe), linked from the
   README. No code changes.
+- Docs: `docs/webhooks.md` describes the `webhook.test` event an app owner can
+  send from the Console. The receiver answers `200` to it with
+  `ezee/integration-runtime-sdk` 1.3.3 or later (`composer update
+  ezee/integration-runtime-sdk`); with 1.3.2 or earlier it answers `401`.
 
 ## 1.3.4
 

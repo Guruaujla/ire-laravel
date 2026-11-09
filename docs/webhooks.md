@@ -78,6 +78,53 @@ The page also lists recent deliveries for a customer, with their status
 (`pending`, `enqueued`, `delivered`, `dead_lettered` or `skipped`), attempt
 count, last HTTP status and failure code (see [Failure codes](#failure-codes)).
 
+## Send a test event
+
+On the **Webhooks** page, an owner can click **Send test event** on an active
+webhook, pick a customer, and send it one `webhook.test` delivery. It goes
+through the same queue, signing, destination check and retries as every other
+event, so a `2xx` from your receiver proves the whole path, including signature
+verification. The page shows the new `delivery_id`; find it in the recent
+deliveries for that customer to see the outcome.
+
+- Only owners can send one, and only to a webhook that is **active** and not
+  locked by the runtime team. A webhook the runtime team manages for you
+  qualifies too: it already receives your real events. A paused webhook answers `developer.webhook_not_active`,
+  a locked one `developer.webhook_locked` and a revoked one
+  `developer.webhook_revoked`.
+- At most 10 test events per webhook per customer per hour
+  (`developer.webhook_test_rate_limited`). The app's request quota applies too.
+- It goes to the one webhook you picked. No other webhook receives it, and no
+  webhook can subscribe to `webhook.test`.
+
+```json
+{
+  "schema_version": 1,
+  "delivery_id": "0190d3d0-2b11-7a40-8c55-3e2f1a0b9c12",
+  "event_id": "webhook.test:0190d3d0-2b10-7f00-9a11-5c6d7e8f9a0b",
+  "event_type": "webhook.test",
+  "occurred_at": "2026-08-04T09:15:00.120Z",
+  "app_id": "app_example",
+  "tenant_id": "tnt_example_1",
+  "data": {
+    "test": { "endpoint_key": "primary", "requested_by": "developer" }
+  }
+}
+```
+
+`data.test.endpoint_key` is the webhook's Name (the same as `X-IR-Key-Id`), and
+`requested_by` is always `developer` today. Schema `WebhookTestPayload`. The
+body carries no customer data beyond `tenant_id`.
+
+Handle it like any event type you do not process: verify the signature, then
+answer `2xx`. **PHP and Laravel:** `WebhookEvent` accepts unknown event types,
+including `webhook.test`, from `ezee/integration-runtime-sdk` 1.3.3. With 1.3.2
+or earlier the verifier rejects it as `payload_shape_invalid` and the Laravel
+receiver answers `401`, which ends the delivery as `http_4xx`. Laravel package
+1.3.4 accepts SDK 1.3.1 and later, so run
+`composer update ezee/integration-runtime-sdk` to get 1.3.3 or later; the
+receiver then answers `200` and fires `WebhookReceived`.
+
 ## Event catalog
 
 | `event_type` | Sent when | Endpoints with no filter get it |
@@ -88,6 +135,7 @@ count, last HTTP status and failure code (see [Failure codes](#failure-codes)).
 | `sync_job.failed` | **Reserved. Never sent today.** A failed job is reported once, as `sync_job.dead_lettered`. A webhook registered outside the Console can name it, but the Console does not offer it. | Yes |
 | `quickbooks.transaction.status_changed` | The runtime's verified view of a QuickBooks Invoice or Payment changed. | Yes |
 | `accounting.document.status_changed` | A document the runtime wrote for you (it has your `erp_id`) changed at the provider, in provider-neutral form. | **No: explicit-only** |
+| `webhook.test` | An owner sent a [test event](#send-a-test-event) to this one webhook. **Not subscribable**: not offered in the Console and refused at registration. | **No: never subscribed** |
 
 **Explicit-only.** `accounting.document.status_changed` is sent only to webhooks
 whose event list names it. A webhook with no filter never receives it, so adding

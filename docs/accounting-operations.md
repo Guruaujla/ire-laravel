@@ -152,8 +152,9 @@ included).
 
 ### Connect
 
-- Self-serve apps get QuickBooks only; an operator adds the app's Xero
-  provider configuration. Without it, a Xero connect is refused
+- A new self-serve app gets a Xero provider configuration automatically
+  once Xero is in that environment's provider catalog. An app created before
+  that, or by an operator in the console, gets it from an operator. Without it, a Xero connect is refused
   `403 authz.provider_not_enabled`.
 - Start a Xero connection with the same signed
   `POST /v1/connections/connect-session` request as QuickBooks, with

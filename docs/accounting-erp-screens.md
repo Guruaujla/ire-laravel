@@ -8,7 +8,7 @@ below is an ordinary ERP page whose controller calls the PHP SDK
 button, nothing here names QuickBooks.
 
 Request and response shapes, and every error code, are in
-[accounting-operations.md](accounting-operations.md). The example Laravel app
+[accounting-operations.md](accounting-operations.md#accounting-operations-reference). The example Laravel app
 in the Laravel package repository
 ([`examples/laravel-erp`](https://github.com/Guruaujla/ire-laravel/tree/main/examples/laravel-erp))
 implements the backend side:
@@ -247,7 +247,7 @@ A row gets there in one of two ways:
 
 | Job `status` | Message and action |
 | --- | --- |
-| `failed` with a documented `accounting.*` `error.code` | Use that code's action from the errors table in [accounting-operations.md](accounting-operations.md). Offer **Resubmit** only for codes whose action is to correct and resend with a new key, which proves nothing was written. |
+| `failed` with a documented `accounting.*` `error.code` | Use that code's action from the errors table in [accounting-operations.md](accounting-operations.md#errors). Offer **Resubmit** only for codes whose action is to correct and resend with a new key, which proves nothing was written. |
 | `dead_lettered`, or `failed` with an unfamiliar code | "Needs review". The provider outcome may be unknown. Reconcile with the operator. Never resubmit under a new key. |
 | `manually_resolved` with a `result` | An operator confirmed the write in the provider and the runtime verified it. Treat it like `completed`: record `provider_id` and `lines`. No retry. |
 | `cancelled`, `manually_resolved` without a `result` | "Needs review". Use the operator's reconciliation result. No retry. |

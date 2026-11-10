@@ -15,7 +15,7 @@ the right shape. The ids and amounts in it are made up.
 
 For the ERP screens to build on top of this API (connection, settings, record
 matching, code mappings, sync status), see
-[accounting-erp-screens.md](accounting-erp-screens.md).
+[accounting-erp-screens.md](accounting-erp-screens.md#erp-screens-for-accounting).
 
 A valid request does not mean the operation is enabled. A write refused by a
 release gate returns `403 accounting.operation_disabled`; do not loop on it.
@@ -137,7 +137,7 @@ the runtime created through the native API, so update, refund and credit memo
 can name its lines. Send every line, either with the `provider_line_id` from the
 old result or exactly as it was created. Invoices created outside the runtime
 are `accounting.document_unlinked`. See
-[accounting-migration.md](accounting-migration.md).
+[accounting-migration.md](accounting-migration.md#moving-from-quickbooks-to-accounting).
 
 ## Xero
 

@@ -42,9 +42,9 @@ Owners add webhooks on the app page in the Console (**Webhooks**):
   not ticked. The reserved `sync_job.failed` is not offered.
 
 A webhook with **no filter** (every event type except the explicit-only ones,
-below) is never created by the Console. It exists only when it was registered
-through the developer webhooks API directly, carried over by an import or promotion, or set up by the
-runtime team. The Console shows its events as "All events except
+below) is never created by the Console's form. It exists only when it was
+registered without an event list through the Console's API, carried over by an
+import from the Sandbox, or set up by the runtime team. The Console shows its events as "All events except
 accounting.document.status_changed, connection.connected,
 connection.reconnect_required, connection.disconnected".
 
@@ -431,7 +431,7 @@ An email template:
 > in {{provider}} or expires.
 >
 > Sign in and click **Reconnect** on the Integrations page:
-> {{https://erp.example.com/integrations}}
+> {{integrations_page_url}}
 >
 > It takes about a minute.
 

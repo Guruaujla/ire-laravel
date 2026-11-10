@@ -1,9 +1,9 @@
 # QuickBooks operations reference
 
 > New ERP accounting code should use the provider-neutral API in
-> [accounting-operations.md](accounting-operations.md); the SDK's `quickbooks()`
+> [accounting-operations.md](accounting-operations.md#accounting-operations-reference); the SDK's `quickbooks()`
 > helper for these native recipes is deprecated since 1.3.0. Moving existing
-> code: [accounting-migration.md](accounting-migration.md).
+> code: [accounting-migration.md](accounting-migration.md#moving-from-quickbooks-to-accounting).
 
 > **CAD only.** QuickBooks Invoice, refund and credit memo writes need a company with
 > **CAD** home currency, **multicurrency off** and **sales tax on** (see
@@ -28,7 +28,7 @@ operation_not_enabled` or `tenant_operation_not_enabled`; do not loop on it.
 ## Before any write
 
 1. Sign every `/v1` request (see [Authentication](index.md#authentication-hmac-signed-requests)).
-   Use an SDK: TypeScript, Python, PHP, or the Laravel package.
+   Use the PHP SDK or the Laravel package, or your own signer built to that contract.
 2. Register or resolve the runtime `tenant_id` for your workspace
    (`POST /v1/tenants`, `GET /v1/tenants/by-external-id/{external_tenant_id}`).
 3. Connect QuickBooks (`POST /v1/connections/connect-session`, then
@@ -73,9 +73,13 @@ Every operation is a `POST /v1/operations/execute` with this envelope:
 | `quickbooks.customer.upsert` | `erp.quickbooks.customer.sync` | 1 | `erp.customer.sync` | `master_customer_command` |
 | `quickbooks.item.upsert` | `erp.quickbooks.item.sync` | 1 | `erp.item.sync` | `master_item_command` |
 
-Invoice create uses version 5: same payload and guards as version 4, and it
-also publishes the verified QuickBooks Invoice ID in the job `result`. Version 4
-publishes no result, so a v4 job never tells you the Invoice ID.
+Invoice create uses version 5 here. The runtime admits versions 4, 5 and 6 for
+a new Invoice (3 and earlier are retired for new work). All three take the same
+payload. Version 4 publishes no result, so a v4 job never tells you the Invoice
+ID; version 5 publishes the verified QuickBooks Invoice ID in the job `result`;
+version 6 also refuses a `DocNumber` QuickBooks already has and a `TxnDate` on
+or before the closing date, and is the version `POST /v1/accounting/operations`
+uses.
 
 A successful admission returns `202 { job_id, polling_url, status: "queued" }`.
 Store both. Never change a recipe version, payload or key for a job that has

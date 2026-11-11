@@ -150,7 +150,10 @@ duplicates.
 4. Show each row's result `status`. `bound` is done. Retry `rate_limited`
    (after `retry_after` seconds) and `not_attempted`. Show `refused` with its
    `code`; for example, `accounting.mapping_conflict` means the record is
-   already bound elsewhere.
+   already bound elsewhere. When the row also has `bound_provider_ref`, the
+   ERP id itself is already bound to that provider record: keep it, or pick
+   it. After a reconnect, an ERP id's own earlier binding no longer counts:
+   binding that ERP id to another record is not refused.
 
 `listRecords($tenantId, $connectionId, $entity, $cursor)` pages through all
 provider records. Use it for a "browse provider records" view. Inactive

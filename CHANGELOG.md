@@ -2,6 +2,13 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.5.1
+
+- No code changes. `docs/accounting-operations.md` and
+  `docs/accounting-erp-screens.md` describe `bound_provider_ref` on
+  `accounting.mapping_conflict` bind refusals, and that a binding made before
+  the last reconnect no longer blocks binding the ERP id again.
+
 ## 1.5.0
 
 - The webhook receiver fires `ConnectionStatusChanged` for every

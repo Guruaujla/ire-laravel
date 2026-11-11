@@ -364,7 +364,10 @@ from 1.3.3 accept the deliveries (answer `200`) but fire only
 `connection.reconnect_required` means the provider no longer accepts the
 connection's authorization (for example the customer revoked access in
 QuickBooks, or the authorization expired). Calls on that connection fail until
-the customer reconnects. There is no hosted reconnect page: you build the
+the customer reconnects. The runtime detects a revoke on the first provider
+call the provider refuses (a refused call checks the authorization at most once a
+minute per connection), and otherwise within an hour, when the stored token is
+next refreshed. There is no hosted reconnect page: you build the
 button and the email, and both start a new connect session for the **same
 tenant and provider**: `POST /v1/connections/connect-session` reconnects the
 tenant's existing connection.

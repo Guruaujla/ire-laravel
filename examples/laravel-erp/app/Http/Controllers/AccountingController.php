@@ -52,13 +52,19 @@ class AccountingController
         return redirect('/')->with('status', 'Accounting connected');
     }
 
-    /** Onboarding: propose provider matches for ERP customers, items or tax codes. Binds nothing. */
+    /**
+     * Onboarding: propose provider matches for ERP customers, items or tax codes. Binds nothing.
+     * Up to 1,000 records against a ready snapshot, 100 against the provider.
+     */
     public function match(Request $request, string $entity)
     {
         $link = $this->link($request);
-        $records = $request->validate(['records' => 'required|array|max:100'])['records'];
+        $input = $request->validate([
+            'records' => 'required|array|max:1000',
+            'source' => 'nullable|in:auto,snapshot,live', // 'snapshot' once a snapshot is ready
+        ]);
 
-        return IntegrationRuntime::accounting()->matchRecords($link->tenant_id, $link->connection_id, $entity, $records);
+        return IntegrationRuntime::accounting()->matchRecords($link->tenant_id, $link->connection_id, $entity, $input['records'], $input['source'] ?? null);
     }
 
     /** Onboarding: bind the pairs a person confirmed (25 per call). */
@@ -68,6 +74,49 @@ class AccountingController
         $bindings = $request->validate(['bindings' => 'required|array|max:25'])['bindings'];
 
         return IntegrationRuntime::accounting()->bindRecords($link->tenant_id, $link->connection_id, $entity, $bindings);
+    }
+
+    /** Large lists: read every provider customer or item once (refresh=1 to read again). */
+    public function startSnapshot(Request $request, string $entity)
+    {
+        $link = $this->link($request);
+
+        return IntegrationRuntime::accounting()->startSnapshot($link->tenant_id, $link->connection_id, $entity, $request->boolean('refresh'));
+    }
+
+    /** Large lists: is the snapshot ready yet? */
+    public function latestSnapshot(Request $request, string $entity)
+    {
+        $link = $this->link($request);
+
+        return IntegrationRuntime::accounting()->latestSnapshot($link->tenant_id, $link->connection_id, $entity);
+    }
+
+    /** Large lists: search the snapshot for the "Change" picker (exact email or 3+ character name prefix). */
+    public function search(Request $request, string $entity)
+    {
+        $link = $this->link($request);
+        $input = $request->validate(['q' => 'required|string|min:3|max:254', 'cursor' => 'nullable|string|max:512']);
+
+        return IntegrationRuntime::accounting()->listRecords($link->tenant_id, $link->connection_id, $entity, $input['cursor'] ?? null, null, null, $input['q']);
+    }
+
+    /** Large lists: bind up to 5,000 confirmed pairs in one background job. */
+    public function startBindJob(Request $request, string $entity)
+    {
+        $link = $this->link($request);
+        $bindings = $request->validate(['bindings' => 'required|array|max:5000'])['bindings'];
+
+        return IntegrationRuntime::accounting()->startBindJob($link->tenant_id, $link->connection_id, $entity, $bindings);
+    }
+
+    /** Large lists: one page (500 rows) of a bind job's results; follow next_cursor. */
+    public function bindJobResults(Request $request, string $entity, string $jobId)
+    {
+        $link = $this->link($request);
+        $cursor = $request->validate(['cursor' => 'nullable|string|max:256'])['cursor'] ?? null;
+
+        return IntegrationRuntime::accounting()->bindJobResults($link->tenant_id, $link->connection_id, $entity, $jobId, $cursor);
     }
 
     /** Example: push one invoice. Build $payload from your invoice (see accounting-operations.md). */

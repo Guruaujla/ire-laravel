@@ -18,7 +18,7 @@ connect, match, bind, push and document state.
 | --- | --- | --- |
 | 1. Accounting connection | Admin | `connections()->start`, `connections()->get`, `providers`, disconnect |
 | 2. Sync settings | Admin | `settings`, `updateSettings` |
-| 3. Match and bind records | Admin | `listRecords`, `matchRecords`, `bindRecords` |
+| 3. Match and bind records | Admin | `startSnapshot`, `latestSnapshot`, `listRecords`, `matchRecords`, `bindRecords`, `startBindJob`, `bindJobResults` |
 | 4. Code mappings | Admin | `referenceOptions`, `listRecords('tax_code')`, `setMapping`, `getMapping`, `deleteMapping` |
 | 5. Document sync status | Staff | your outbox row, `status`, `refresh` |
 | 6. Sync issues | Admin | your outbox rows |
@@ -162,6 +162,62 @@ records are included, so mark them.
 If a customer or item is neither bound nor created with `upsertCustomer` or
 `upsertItem`, an invoice that uses it is refused with
 `accounting.mapping_missing`.
+
+### Large customer and item lists
+
+For thousands of customers or items, read the provider once with a snapshot
+and bind in a background job, instead of matching and binding page by page
+against the provider. Customers and items only; tax codes stay on the steps
+above. Snapshots and bind jobs are off until the runtime operator enables
+them for your app (`accounting.snapshot_not_enabled` /
+`accounting.bind_job_not_enabled`); until then use the steps above.
+
+1. **After connect**, start one snapshot per record type:
+   `startSnapshot($tenantId, $connectionId, 'customer')` and the same for
+   `'item'`. It returns `{snapshot_id, job_id, status}` and runs in the
+   background. Keep `job_id`. If the pull fails, the job sends
+   `sync_job.dead_lettered` instead of `sync_job.completed`, and
+   `latestSnapshot(...)` shows `status: failed` with `error_code`; start a new
+   one after 15 minutes.
+2. **When it is ready** (the `sync_job.completed` webhook for that `job_id`,
+   or `latestSnapshot(...)['status'] === 'ready'`), match in batches of up to
+   1,000 against it:
+   `matchRecords($tenantId, $connectionId, $entity, $records, 'snapshot')`.
+   Pass `'snapshot'`: the default source (`auto`) reads the snapshot only
+   while its `as_of` (when the pull started) is under 24 hours old, and
+   otherwise reads the provider, which takes at most 100 records per call
+   (`accounting.match_too_many`). The response says `source` and `as_of`.
+   Store the results in your own tables and render the screen from them. A
+   409 `accounting.snapshot_not_ready` means the pull is still running: wait
+   for the webhook.
+3. **Change** a match with a search over the snapshot:
+   `listRecords($tenantId, $connectionId, $entity, null, null, null, $q)`.
+   `$q` is an exact email (customers, contains `@`) or a name prefix of at
+   least 3 characters. Snapshot records show no email or SKU.
+4. **Accept all matched** sends the confirmed pairs in one job, up to 5,000
+   rows: `startBindJob($tenantId, $connectionId, $entity, [['erp_id' => ...,
+   'provider_ref' => ...], ...])`. It returns `{job_id, status}`. One bind job
+   runs per connection at a time (`accounting.bind_job_in_progress`).
+5. **When it ends** (`sync_job.completed`, or `sync_job.dead_lettered` when the
+   job failed), page `bindJobResults($tenantId, $connectionId, $entity,
+   $jobId, $cursor)` until `next_cursor` is null and store each row: `bound`
+   is done; `refused` carries `code` (and `bound_provider_ref` on
+   `accounting.mapping_conflict`) as in step 4 of "Match and bind records"; `not_attempted` was never
+   tried, so send it again in a new job. A job that fails with
+   `accounting.bind_job_connection_changed` (the connection was reconnected or
+   switched company) keeps the rows bound before it; match again before
+   resending the rest.
+6. **Refresh** reads the provider again:
+   `startSnapshot($tenantId, $connectionId, $entity, true)`, at most once per
+   15 minutes per record type. A snapshot expires after 48 hours.
+
+Both jobs report progress while running: `waiting_on` says why a running job
+is paused (`duty_cycle`, `slot` or `daily_budget`). Large Xero organisations
+may take more than a day, because background jobs share a small part of
+Xero's daily call allowance. A job that waits for provider capacity for more
+than 24 hours in total fails with `accounting.snapshot_budget_exhausted` or
+`accounting.bind_job_budget_exhausted`; start it again later (a bind job:
+only the rows that are `not_attempted`).
 
 ## 4. Code mappings
 

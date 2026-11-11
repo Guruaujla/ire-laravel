@@ -2,6 +2,16 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.6.0
+
+- No package code changes. The bulk onboarding methods need
+  `ezee/integration-runtime-sdk` 1.6.0 or later (`composer update
+  ezee/integration-runtime-sdk`) (`startSnapshot`, `latestSnapshot`, `startBindJob`,
+  `bindJobResults`, and the `source`/`q` arguments of `matchRecords` and
+  `listRecords`).
+- `docs/accounting-erp-screens.md` adds "Large customer and item lists"; the
+  example app adds snapshot, search and bind-job routes.
+
 ## 1.5.1
 
 - No code changes. `docs/accounting-operations.md` and

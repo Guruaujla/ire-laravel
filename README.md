@@ -89,7 +89,8 @@ Writes: `upsertCustomer`, `upsertItem`, `createInvoice`, `updateInvoice`,
 `applyCreditMemo`. Reads and onboarding: `status`, `providers`,
 `connectionId`, `refresh`, `link`, `referenceOptions`/`referenceData`, `getMapping`/`setMapping`/
 `deleteMapping`, `settings`/`updateSettings`, `listRecords`/`matchRecords`/
-`bindRecords`. No method takes a provider. Payload shapes, with one
+`bindRecords`, and for large customer and item lists
+`startSnapshot`/`latestSnapshot`/`startBindJob`/`bindJobResults`. No method takes a provider. Payload shapes, with one
 validator-checked example per operation, are in this package's
 [`docs/accounting-operations.md`](docs/accounting-operations.md) and
 [`docs/accounting-operations.json`](docs/accounting-operations.json).

@@ -89,7 +89,9 @@ $invoice->update(['accounting_revision' => $status['result']['revision']]);
 ```
 
 Onboarding a connection: `accounting()->listRecords / matchRecords /
-bindRecords` for customers, items and tax codes; `setMapping` (offer choices
+bindRecords` for customers, items and tax codes (for thousands of customers
+or items: `startSnapshot`, then `matchRecords` 1,000 at a time, then
+`startBindJob` and `bindJobResults`); `setMapping` (offer choices
 from `referenceOptions`, or look one up with `referenceData`) for payment
 methods and accounts; `settings` for the sync start
 date and record types.

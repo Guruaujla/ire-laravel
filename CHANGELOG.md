@@ -2,7 +2,7 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
-## 1.6.1 (unreleased)
+## 1.6.1
 
 - `composer.json` requires `ezee/integration-runtime-sdk` `^1.6.0` (was
   `^1.3.1`), so the bulk onboarding methods, `Connections::reconnect()` and the

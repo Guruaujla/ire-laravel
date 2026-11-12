@@ -142,9 +142,9 @@ Event::listen(function (AccountingDocumentStatusChanged $e) {
 | `WebhookReceived` | Every verified, first-seen delivery (raw `WebhookEvent`). |
 
 The connection events and `WebhookTestReceived` need this package at 1.5.0 and
-`ezee/integration-runtime-sdk` 1.3.3 or later (run `composer update
-ezee/integration-runtime-sdk`; this package's constraint still allows
-`^1.3.1`). `Connections::reconnect()` needs the SDK at 1.5.0.
+`ezee/integration-runtime-sdk` 1.3.3 or later; `Connections::reconnect()` needs
+the SDK at 1.5.0. From 1.6.1 this package requires the SDK at `^1.6.0`, which
+covers both (run `composer update ezee/integration-runtime-sdk`).
 
 Each `SyncJob*` event has `tenantId`, `jobId`, `status`, `operationKey`,
 `externalObjectId`, `lastErrorCode`, `source` (`webhook` or `poll`) and `job`.

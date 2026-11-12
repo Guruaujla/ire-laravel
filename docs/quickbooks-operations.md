@@ -44,7 +44,7 @@ operation_not_enabled` or `tenant_operation_not_enabled`; do not loop on it.
 | --- | --- |
 | Currency | CAD home currency, multicurrency off. Other companies fail closed with `financial_write_currency_unsupported`. Omit `CurrencyRef` on Invoices. |
 | Tax | `GlobalTaxCalculation: "TaxExcluded"`, one `tax_declarations` entry per line, existing `TaxCodeRef`. Unmapped tax codes are refused. Never send `TxnTaxDetail`. |
-| App | QuickBooks recipes are admitted for any active app whose product kind is ERP / accounting (including `app_erp`). Other product kinds get `operation_app_not_permitted`. |
+| App | QuickBooks recipes are admitted for any active app whose product kind is ERP / accounting. Other product kinds get `operation_app_not_permitted`. |
 | Money movement | None. Payment and Refund record accounting transactions; they never charge or refund a card. |
 
 ## The envelope

@@ -2,6 +2,16 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.6.1 (unreleased)
+
+- `composer.json` requires `ezee/integration-runtime-sdk` `^1.6.0` (was
+  `^1.3.1`), so the bulk onboarding methods, `Connections::reconnect()` and the
+  `connection.*` webhook parsing are always present. Run `composer update
+  ezee/integration-runtime-sdk`. No package code changes.
+- With SDK 1.6.1, `IntegrationRuntime::jobs()->wait()` and `->get()` also
+  accept an `accounting()` receipt's `polling_url`. `IntegrationRuntime::track()`
+  already handled it.
+
 ## 1.6.0
 
 - No package code changes. The bulk onboarding methods need

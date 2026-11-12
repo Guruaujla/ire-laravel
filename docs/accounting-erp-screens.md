@@ -219,6 +219,12 @@ than 24 hours in total fails with `accounting.snapshot_budget_exhausted` or
 `accounting.bind_job_budget_exhausted`; start it again later (a bind job:
 only the rows that are `not_attempted`).
 
+A snapshot also stops being usable when the runtime operator rotates its
+encryption key, because snapshot emails are stored only as a keyed hash. A
+ready snapshot from before the rotation then reads as `expired` and matching
+falls back as if none were ready; a pull running across the rotation fails
+with `accounting.snapshot_key_changed`. Start a new snapshot in both cases.
+
 ## 4. Code mappings
 
 One section per entry in `mapping_kinds` whose `granularity` is `code`. For

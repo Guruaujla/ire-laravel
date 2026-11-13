@@ -44,7 +44,10 @@ service-key material on any screen.
 
 ## 1. Accounting connection
 
-Show one card with the provider name and the connection state.
+Show one card with the provider name, the connected company's name
+(`connection.provider_account_name`; it can be null, for example for a
+connection made before the field existed, until the next reconnect) and the
+connection state.
 
 **What to store.** When a connect is confirmed, call `providers($tenantId)`
 and store its `connection`: `connection_id`, `provider_key` and

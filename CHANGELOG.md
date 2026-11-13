@@ -2,8 +2,9 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
-## 1.7.0 (unreleased)
+## 1.7.0
 
+- Requires `ezee/integration-runtime-sdk` `^1.7.0` (was `^1.6.0`).
 - `IntegrationRuntime::connections()->disconnect($tenantId, $connectionId,
   $idempotencyKey, $providerAccountId)` disconnects an accounting connection
   (needs `ezee/integration-runtime-sdk` 1.7.0). `docs/accounting-erp-screens.md`

@@ -147,8 +147,8 @@ Event::listen(function (AccountingDocumentStatusChanged $e) {
 The connection events and `WebhookTestReceived` need this package at 1.5.0 and
 `ezee/integration-runtime-sdk` 1.3.3 or later; `Connections::reconnect()` needs
 the SDK at 1.5.0. From 1.6.1 this package requires the SDK at `^1.6.0`, which
-covers both (run `composer update ezee/integration-runtime-sdk`).
-`Connections::disconnect()` needs the SDK at 1.7.0 (see
+covers both (run `composer update ezee/integration-runtime-sdk`). From 1.7.0
+it requires the SDK at `^1.7.0`, which adds `Connections::disconnect()` (see
 [`docs/accounting-erp-screens.md`](docs/accounting-erp-screens.md#1-accounting-connection)).
 
 Each `SyncJob*` event has `tenantId`, `jobId`, `status`, `operationKey`,

@@ -85,6 +85,11 @@ count, last HTTP status, failure code (see [Failure codes](#failure-codes)) and
 how many times an owner redelivered it (see
 [Redeliver a failed delivery](#redeliver-a-failed-delivery)).
 
+A `delivered` delivery, and a `skipped` one that cannot be redelivered, is
+kept for **30 days** after it was last sent, then removed from the list. A
+`dead_lettered` delivery stays until you redeliver it, at any age, so the
+**Redeliver** button never expires.
+
 ## Send a test event
 
 On the **Webhooks** page, an owner can click **Send test event** on an active

@@ -198,7 +198,11 @@ them for your app (`accounting.snapshot_not_enabled` /
    (`accounting.match_too_many`). The response says `source` and `as_of`.
    Store the results in your own tables and render the screen from them. A
    409 `accounting.snapshot_not_ready` means the pull is still running: wait
-   for the webhook.
+   for the webhook. A snapshot match returns at most 20 candidates per email,
+   SKU or name: when more snapshot records share a record's key (one email on
+   hundreds of customers), its result carries `candidates_truncated: true`,
+   is never `matched` on that key, and shows only some of them. Let the user
+   pick with the search in step 3.
 3. **Change** a match with a search over the snapshot:
    `listRecords($tenantId, $connectionId, $entity, null, null, null, $q)`.
    `$q` is an exact email (customers, contains `@`) or a name prefix of at

@@ -30,7 +30,7 @@ take the files from the repository at the tag you installed (1.3.4 or later):
 ```bash
 composer config repositories.ire-php-sdk vcs https://github.com/Guruaujla/ire-php-sdk
 composer config repositories.ire-laravel vcs https://github.com/Guruaujla/ire-laravel
-composer require ezee/laravel-integration-runtime:^1.7.0 ezee/integration-runtime-sdk:^1.7.0 -W
+composer require ezee/laravel-integration-runtime:^1.8.0 ezee/integration-runtime-sdk:^1.8.0 -W
 git clone --depth 1 --branch v1.6.0 https://github.com/Guruaujla/ire-laravel /tmp/ire-laravel
 cp -r /tmp/ire-laravel/examples/laravel-erp/{app,database,routes} ./   # merge into your app
 # Installed a later version? Clone that tag instead of v1.6.0.

@@ -2,7 +2,7 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
-## Unreleased (1.8.0)
+## 1.8.0
 
 - No package code changes. `docs/accounting-operations.md` describes the
   new `tax_lines` on invoice create and update results and on the invoice

@@ -2,6 +2,14 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## 1.7.0 (unreleased)
+
+- `IntegrationRuntime::connections()->disconnect($tenantId, $connectionId,
+  $idempotencyKey, $providerAccountId)` disconnects an accounting connection
+  (needs `ezee/integration-runtime-sdk` 1.7.0). `docs/accounting-erp-screens.md`
+  and `docs/accounting-operations.md` use it instead of a hand-built
+  `client()->send()` call.
+
 ## 1.6.1
 
 - `composer.json` requires `ezee/integration-runtime-sdk` `^1.6.0` (was

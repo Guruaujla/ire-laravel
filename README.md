@@ -64,6 +64,9 @@ $session = IntegrationRuntime::connections()->start($tenant['tenant_id'], route(
 return redirect()->away($session['authorize_url']);
 // On return: check $state, then require status === 'connected':
 $connection = IntegrationRuntime::connections()->get($tenantId, $request->query('connection_id'));
+// Store providers($tenantId)['connection'] (connection_id, provider_key, provider_account_id) now.
+// Disconnect later (SDK 1.7.0+), after the admin confirms; a new stored key per attempt:
+// IntegrationRuntime::connections()->disconnect($tenantId, $connectionId, $disconnectKey, $providerAccountId);
 
 // 3. Onboard: bind customers, items and tax codes; map payment methods and accounts.
 $accounting = IntegrationRuntime::accounting();
@@ -145,6 +148,8 @@ The connection events and `WebhookTestReceived` need this package at 1.5.0 and
 `ezee/integration-runtime-sdk` 1.3.3 or later; `Connections::reconnect()` needs
 the SDK at 1.5.0. From 1.6.1 this package requires the SDK at `^1.6.0`, which
 covers both (run `composer update ezee/integration-runtime-sdk`).
+`Connections::disconnect()` needs the SDK at 1.7.0 (see
+[`docs/accounting-erp-screens.md`](docs/accounting-erp-screens.md#1-accounting-connection)).
 
 Each `SyncJob*` event has `tenantId`, `jobId`, `status`, `operationKey`,
 `externalObjectId`, `lastErrorCode`, `source` (`webhook` or `poll`) and `job`.

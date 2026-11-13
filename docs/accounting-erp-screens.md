@@ -16,7 +16,7 @@ connect, match, bind, push and document state.
 
 | Screen | Who | SDK calls |
 | --- | --- | --- |
-| 1. Accounting connection | Admin | `connections()->start`, `connections()->get`, `providers`, disconnect |
+| 1. Accounting connection | Admin | `connections()->start`, `connections()->get`, `providers`, `connections()->disconnect` |
 | 2. Sync settings | Admin | `settings`, `updateSettings` |
 | 3. Match and bind records | Admin | `startSnapshot`, `latestSnapshot`, `listRecords`, `matchRecords`, `bindRecords`, `startBindJob`, `bindJobResults` |
 | 4. Code mappings | Admin | `referenceOptions`, `listRecords('tax_code')`, `setMapping`, `getMapping`, `deleteMapping` |
@@ -82,31 +82,37 @@ needs a reconnect), `start` throws `accounting.connection_exists`. The
 problem's `connection_id` and `provider_key` name that connection. Show
 "Disconnect {provider} first". Its documents stay in the old provider.
 
-**Disconnect** is a signed call. The SDK has no typed method for it yet.
-Make a new key for each disconnect the admin confirms, and store it. Reuse
-that key only to retry the same attempt. Reusing an old key, for example
-after a reconnect, returns the earlier result and disconnects nothing.
+**Disconnect** is `connections()->disconnect()` (SDK 1.7.0 or later). It
+reads the connection's `provider_key` for you. Make a new key for each
+disconnect the admin confirms, and store it. Reuse that key only to retry the
+same attempt. Reusing an old key, for example after a reconnect, returns the
+earlier result and disconnects nothing.
 
 ```php
+use Ezee\IntegrationRuntime\Exception\RuntimeProblemException;
+
 $key = $link->disconnect_key ??= 'disconnect:' . Str::uuid(); // new per confirmed attempt
 $link->save();
-$response = IntegrationRuntime::client()->send('POST', "/v1/connections/{$link->connection_id}/disconnect", [
-    'tenant_id' => $link->tenant_id,
-    'provider_key' => $link->provider_key,
-    'provider_account_id' => $link->provider_account_id,
-    'idempotency_key' => $key,
-]);
-if ($response->getStatusCode() === 204) {
+try {
+    $result = IntegrationRuntime::connections()->disconnect(
+        $link->tenant_id,
+        $link->connection_id,
+        $key,
+        $link->provider_account_id,
+    );
     $link->update(['disconnect_key' => null]);   // done
-} else {
-    $code = json_decode((string) $response->getBody(), true)['code'] ?? 'unknown';
+    // $result['provider_cleanup'] === 'customer_action_required': a Xero
+    // disconnect that was local only; see "Xero" in accounting-operations.md.
+} catch (RuntimeProblemException $e) {
     // oauth.lifecycle_busy (409) or oauth.disconnect_retryable (503):
-    // retry later with the same $key. Anything else: show it to the admin.
+    // retry later with the same $key. Anything else: show $e->problemCode to the admin.
 }
 ```
 
-`send` returns error responses instead of throwing, so always check for
-`204`. Ask the admin to confirm first: writes stop at once.
+Pass the stored `provider_account_id`. Without it the SDK reads `providers()`
+for it, which works only while this is the tenant's one connected accounting
+connection, not for an extra connection or one that needs a reconnect. Ask the
+admin to confirm first: writes stop at once.
 
 ## 2. Sync settings
 

@@ -187,8 +187,9 @@ included).
 
 ### Disconnect
 
-`POST /v1/connections/{id}/disconnect` accepts `provider_key: "xero"` with the
-connection's Xero tenant id as `provider_account_id`. The runtime never
+`POST /v1/connections/{id}/disconnect` (`connections()->disconnect()` in the PHP
+SDK 1.7.0+) accepts `provider_key: "xero"` with the connection's Xero tenant id
+as `provider_account_id`. The runtime never
 revokes a Xero token (one revoke would end every grant of that Xero user,
 across organisations). It removes only this organisation's Xero connection.
 
@@ -299,8 +300,8 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.mapping_missing` (409) | An ERP customer, item or code has no usable mapping. `mapping_kind`, `mapping_erp_code` and `mapping_state` say what to map. | Map it, then resend the same request. | `fix_setup` |
 | `accounting.record_type_disabled` (409) | The connection's settings exclude this record type. | Turn it on with `PUT …/settings` if it should sync, then resend the same request. | `fix_setup` |
 | `accounting.document_unlinked` (409) | The referenced invoice (or the payment a refund returns) has no verified provider document on this connection. | Create it through the runtime, or link one created through `quickbooks()`, then resend. | `fix_setup` |
-| `accounting.no_accounting_connection`, `accounting.multiple_accounting_connections` (409) | The tenant has no, or several, accounting connections. | Connect one, or disconnect the extra one; passing `connection_id` does not resolve several. | `fix_setup` |
-| `accounting.connection_exists` (409, from `POST /v1/connections/connect-session`) | The customer already has an active connection to a different accounting provider; `connection_id` and `provider_key` name it. | Disconnect it first (`POST /v1/connections/{id}/disconnect`), then connect the new provider. Its documents stay in the old provider. | `fix_setup` |
+| `accounting.no_accounting_connection`, `accounting.multiple_accounting_connections` (409) | The tenant has no, or several, accounting connections. | Connect one, or disconnect the extra one (`connections()->disconnect()` in the PHP SDK 1.7.0+, with its stored `provider_account_id`); passing `connection_id` does not resolve several. | `fix_setup` |
+| `accounting.connection_exists` (409, from `POST /v1/connections/connect-session`) | The customer already has an active connection to a different accounting provider; `connection_id` and `provider_key` name it. | Disconnect it first (`POST /v1/connections/{id}/disconnect`; `connections()->disconnect()` in the PHP SDK 1.7.0+), then connect the new provider. Its documents stay in the old provider. | `fix_setup` |
 | `accounting.revision_conflict` (409) | The document changed since your revision or before-state. | Refresh, reconcile with a person, send as a new business event with a new key. Never retry it blindly. | `review_and_resubmit` |
 | `accounting.amount_exceeded` (409) | A refund over what was paid, or a returned or credited line over what remains. | Refresh the invoice and reduce the amount; new key. | `review_and_resubmit` |
 | `accounting.tax_mismatch` (409) | The ERP's tax does not match the mapped tax codes or the provider's verification. | Recompute tax from the mapped codes or send per-rate `tax_lines`; new key. | `review_and_resubmit` |

@@ -2,6 +2,17 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## Unreleased (1.8.0)
+
+- No package code changes. `docs/accounting-operations.md` describes the
+  new `tax_lines` on invoice create and update results and on the invoice
+  document read (send them back as `before.totals`), and updates of paid
+  invoices: QuickBooks when every link is a Payment and the new total is at
+  least the amount paid; Xero due date and line descriptions only.
+  `docs/quickbooks-operations.md` describes the native update rule and its two
+  new refusals. Results are pass-through arrays, so `IntegrationRuntime`
+  callers see the new fields with no upgrade.
+
 ## 1.7.0
 
 - Requires `ezee/integration-runtime-sdk` `^1.7.0` (was `^1.6.0`).

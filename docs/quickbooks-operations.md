@@ -96,7 +96,19 @@ accounting-approved `net_amount`, `total_tax`, `total_amount` and per-rate
 
 ### Invoice update (sparse)
 
-For an open, unpaid Invoice with no payment or credit activity. Send
+For an open Invoice. An Invoice with payments can be updated when every
+invoice-level `LinkedTxn` is a Payment and the new total is at least the amount
+paid (`TotalAmt - Balance`); the read-back then checks `Balance` is the new
+total minus the amount paid. A new total below the amount paid is refused with
+`quickbooks.invoice_update_below_paid`, and any other link (a deposit or an
+estimate) with `quickbooks.invoice_update_linked_unsupported`. A credit memo
+applied in QuickBooks is applied through a Payment, shows as a Payment link and
+is allowed, as QuickBooks allows. A Payment written through this runtime blocks
+updates of its Invoice only while its outcome is open (reserved, sent or
+uncertain); once it is linked or recorded as failed it no longer blocks. A
+Payment still in flight whose Invoice the runtime has not yet recorded blocks
+every update on the connection until it resolves. The result's `status` is
+`open`, `partially_paid` or `paid` (`zero_value` for a zero total). Send
 `original_invoice` with the evidence approved at creation, and `invoice` with
 `Id`, the current `SyncToken`, `sparse: true` and every existing line `Id`,
 `ItemRef` and `TaxCodeRef`, each exactly once. `invoice_verification` holds the

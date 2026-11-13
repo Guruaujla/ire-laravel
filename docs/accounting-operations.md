@@ -106,16 +106,66 @@ or listen for the `sync_job.completed` / `sync_job.dead_lettered` webhooks (same
 { "provider_key": "quickbooks", "document_type": "invoice", "erp_id": "INV-1001",
   "provider_id": "101", "revision": "0", "provider_account_id": "1234567890",
   "currency": "CAD", "net_amount": "100.00", "total_tax": "13.00", "total_amount": "113.00",
+  "tax_lines": [{ "tax_code": "HST", "component": "HST ON", "rate_percent": "13",
+    "taxable_amount": "100.00", "tax_amount": "13.00" }],
   "lines": [{ "erp_line_id": "L1", "provider_line_id": "1" }], "provider_verified": true }
 ```
 
 Store `revision`; the next write to that document sends it back. A payment or
 credit application also returns the invoice's new `balance`.
 
+Invoice create and update results also carry `tax_lines`: the tax the
+provider stored, one entry per tax component of each ERP tax code, in the
+same shape as `expected_totals.tax_lines`. Store `net_amount`, `total_tax`,
+`total_amount` and `tax_lines` with `revision`, and send them back unchanged
+as the next update's `before.totals` (or a void's, refund's or credit memo's
+`before_totals`). Each entry names your ERP tax code and the provider's
+component (QuickBooks: the tax rate's name; Xero: the tax rate component's
+name). Xero stores tax per line, not per component, so for Xero each tax
+code's stored tax is split across its components by their rates (largest
+remainder); the parts always add up to Xero's stored tax. `tax_lines` is
+left out when a provider rate is no longer mapped to an ERP tax code. The
+field is additive: results stored before it existed do not have it.
+
+### Updating a paid invoice
+
+- **QuickBooks:** an invoice with payments can be updated when every
+  invoice-level link is a Payment and the new total is at least the amount
+  paid (total minus balance). The payments stay applied and the result's
+  `balance` is the new total minus the amount paid; when that balance is
+  `0.00` the result has no `status` (refresh the document to read it). A new
+  total below the amount paid, or a link to anything other than a Payment
+  (a deposit, an estimate, ...), is `409 accounting.unsupported_change`. All
+  other update rules are unchanged.
+  - A payment written through this API blocks updates of its invoice only
+    while it is in flight or its outcome is uncertain. Once the payment is
+    completed, or has failed, the invoice can be updated under the rule
+    above. A payment that failed does not block other invoices either.
+  - A credit memo applied in QuickBooks (in QuickBooks itself or through its
+    API) is applied through a Payment, so the invoice shows it as a Payment
+    link. QuickBooks lets such an invoice be edited, so the update is allowed
+    and the applied credit counts as paid. A credit memo or refund written
+    through this API still blocks updates of its invoice.
+- **Xero:** Xero locks amounts on a paid, part-paid or credited invoice. Such
+  an invoice takes only a `due_date` change and line `description` changes:
+  send the same lines, quantities, prices, tax codes and `expected_totals` as
+  the invoice already has. The runtime sends every line back with the values
+  Xero holds (and its tracking) and only the new descriptions, then checks
+  that Xero kept the descriptions and due date. Any change to a quantity, unit
+  price, amount, tax code or total is `409 accounting.unsupported_change`;
+  remove the payment in Xero first to change them.
+- A void of a paid invoice is still refused by both providers.
+
 Other reads:
 
 - `GET …/documents/{invoice|payment}/{erp_id}?tenant_id=…` re-reads the
-  provider: current `revision`, `status`, `total_amount`, `balance`.
+  provider: current `revision`, `status`, `total_amount`, `balance`. For an
+  invoice it also returns `net_amount`, `total_tax` and `tax_lines` from that
+  read (`tax_lines` is `null` when a rate on the invoice is not mapped to an
+  ERP tax code), so you can backfill `before.totals` for invoices created
+  before results carried `tax_lines`. For Xero this read makes one more Xero
+  call (the tax rates). Whenever `tax_lines` is left out of a result or is
+  `null` on a read, the runtime records why (`accounting.tax_lines.omitted`).
 - `accounting.document.status_changed` webhook (opt in by listing it in the
   endpoint's `event_types`): `data.document` has the same shape, for documents
   the runtime wrote. The Laravel package (1.3.0 and later) verifies it and
@@ -328,7 +378,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.settings_conflict` (409) | The settings changed since your `expected_revision`. | `GET` the settings again, reapply the change and resend with the new revision. | `fix_request` |
 | `accounting.mapping_conflict` (409) | The provider record is bound to another ERP id, the ERP id is already bound to a different record (`bound_provider_ref` names it), or the record is ambiguous or changed during verification. A binding of the ERP id made before the last reconnect does not count. | Resolve the existing binding or choose another record. When `bound_provider_ref` is present, keep that binding or bind to it. | `fix_request` |
 | `accounting.reference_invalid` (409), `accounting.reference_not_found` (404) | The provider record is unusable for this kind, or does not exist. | Choose an active record of the right type. | `fix_request` |
-| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping. | Rebind to the correct provider record instead. | `fix_request` |
+| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"). | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first. | `fix_request` |
 | `accounting.mapping_not_found` (404) | No mapping for this kind and ERP code. | Create it with `PUT …/mappings/{kind}/{erp_code}`. | `fix_request` |
 | `accounting.connection_not_found` (404) | The connection id is not this tenant's accounting connection. | Read it from `GET /v1/accounting/providers`. | `fix_request` |
 | `accounting.operation_not_found` (404) | Unknown `job_id` for this tenant. | Use the `job_id` from the `202`. | `fix_request` |

@@ -2,6 +2,11 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## Unreleased
+
+- Docs: `accounting-operations.md` documents `accounting.invoice_has_payment`,
+  the job status `error.message`, and `GET /v1/sync-jobs?completed_since=`.
+
 ## 1.8.0
 
 - No package code changes. `docs/accounting-operations.md` describes the

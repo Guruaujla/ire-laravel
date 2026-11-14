@@ -218,6 +218,52 @@
         }
       }
     },
+    "quickbooks.payment.void": {
+      "summary": "Void one runtime Payment at the SyncToken the ERP last saw (sparse update, include=void). A changed SyncToken, a payment over several invoices or one named by a runtime refund is refused; never refetch and retry automatically.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.payment.voided",
+        "recipe_version": 1,
+        "trigger_type": "erp.payment.voided",
+        "object_type": "payment_void",
+        "internal_object_id": "PVOID-1",
+        "idempotency_key": "erp_payment_301:void",
+        "payload": {
+          "payment_reversal": {
+            "kind": "void",
+            "provider_account_id": "1234567890",
+            "payment_id": "301",
+            "payment_erp_id": "PAY-301",
+            "expected_sync_token": "0"
+          }
+        }
+      }
+    },
+    "quickbooks.payment.delete": {
+      "summary": "Delete one runtime Payment at the SyncToken the ERP last saw. A changed SyncToken, a payment over several invoices or one named by a runtime refund is refused; a deleted payment's ERP id is never reused.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.payment.deleted",
+        "recipe_version": 1,
+        "trigger_type": "erp.payment.deleted",
+        "object_type": "payment_delete",
+        "internal_object_id": "PDEL-1",
+        "idempotency_key": "erp_payment_301:delete",
+        "payload": {
+          "payment_reversal": {
+            "kind": "delete",
+            "provider_account_id": "1234567890",
+            "payment_id": "301",
+            "payment_erp_id": "PAY-301",
+            "expected_sync_token": "0"
+          }
+        }
+      }
+    },
     "quickbooks.refund.create": {
       "summary": "Record an accounting RefundReceipt against an original sale and its positive-cash Payment. Does not process a card refund.",
       "request": {

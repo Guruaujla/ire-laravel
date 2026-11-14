@@ -67,6 +67,8 @@ Every operation is a `POST /v1/operations/execute` with this envelope:
 | `quickbooks.invoice.update_sparse` | `erp.quickbooks.invoice.updated` | 1 | `erp.invoice.updated` | `invoice_update` |
 | `quickbooks.invoice.void` | `erp.quickbooks.invoice.voided` | 1 | `erp.invoice.voided` | `invoice_void` |
 | `quickbooks.payment.create` | `erp.quickbooks.payment.created` | 2 | `erp.payment.created` | `payment` |
+| `quickbooks.payment.void` | `erp.quickbooks.payment.voided` | 1 | `erp.payment.voided` | `payment_void` |
+| `quickbooks.payment.delete` | `erp.quickbooks.payment.deleted` | 1 | `erp.payment.deleted` | `payment_delete` |
 | `quickbooks.refund.create` | `erp.quickbooks.refund.created` | 3 | `erp.refund.created` | `refund_receipt` |
 | `quickbooks.credit_memo.create` | `erp.quickbooks.credit_memo.created` | 1 | `erp.credit_memo.created` | `credit_memo` |
 | `quickbooks.credit_memo.apply` | `erp.quickbooks.credit_memo.applied` | 1 | `erp.credit_memo.applied` | `credit_application` |
@@ -127,6 +129,18 @@ void automatically.
 `DepositToAccountRef`, `PaymentMethodRef` and `TxnDate` (YYYY-MM-DD).
 `linked_invoice` names one already-linked Invoice with its company, `external_id`,
 current `sync_token` and `expected_balance`. Overpayment is refused.
+
+### Payment void and delete
+
+Seeded disabled. Prefer `accounting.payment.void` / `.delete`, which build
+this payload for you. `payment_reversal` holds `kind` (`void` or `delete`,
+matching the operation), `provider_account_id`, `payment_id`, `payment_erp_id`
+(or `null`) and `expected_sync_token`. `internal_object_id` is your id for this
+void or delete, never starting with `provider:`. The Payment must be applied to
+one Invoice or to none, dated after the closing date, and have no refund
+written through the runtime. A stale SyncToken is a conflict: re-read and ask
+the user. A deleted Payment cannot be voided, and a voided Payment is not
+deleted.
 
 ### Refund
 

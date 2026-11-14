@@ -190,6 +190,30 @@
         }
       }
     },
+    "accounting.payment.void": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.payment.void",
+      "erp_id": "PAY-501",
+      "idempotency_key": "payment:PAY-501:void:PVOID-1",
+      "payload": {
+        "void_id": "PVOID-1",
+        "payment": {
+          "expected_revision": "0"
+        }
+      }
+    },
+    "accounting.payment.delete": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.payment.delete",
+      "erp_id": "PAY-502",
+      "idempotency_key": "payment:PAY-502:delete:PDEL-1",
+      "payload": {
+        "delete_id": "PDEL-1",
+        "payment": {
+          "expected_revision": "0"
+        }
+      }
+    },
     "accounting.refund.create": {
       "tenant_id": "ten_01JEXAMPLE",
       "operation": "accounting.refund.create",

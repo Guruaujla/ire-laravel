@@ -76,6 +76,8 @@ document before anything else.
 | `accounting.invoice.update` | ERP invoice id | `change_id`, the full new `invoice` (same customer, issue date, items, tax codes and line ids), `expected_totals`, `before` {expected_revision, totals} |
 | `accounting.invoice.void` | ERP invoice id | `void_id`, `invoice` {issue_date, currency, customer, expected_revision, before_totals} |
 | `accounting.payment.create` | ERP payment id | `payment` {date, amount, currency, customer, payment_method, deposit_account, reference?}, `invoice` {erp_id, expected_revision, expected_balance} |
+| `accounting.payment.void` | ERP payment id | `void_id`, `payment.expected_revision` |
+| `accounting.payment.delete` | ERP payment id | `delete_id`, `payment.expected_revision` |
 | `accounting.refund.create` | ERP refund id | `refund` {number, date, lines with `original_erp_line_id`, payment_method, refund_account}, `expected_totals`, `original_invoice` {erp_id, before_totals}, `original_payment.erp_id` |
 | `accounting.credit_memo.create` | ERP credit memo id | `credit_memo` {number, date, lines with `original_erp_line_id`}, `expected_totals`, `original_invoice` {erp_id, before_totals} |
 | `accounting.credit_memo.apply` | ERP application id | `application` {date, amount, currency, customer}, `credit_memo.erp_id`, `invoice` {erp_id, before_totals} |
@@ -95,6 +97,26 @@ Rules that apply to all of them:
 - The provider's closing date is checked on every write; a write dated on or
   before it is `409 accounting.period_closed`.
 - QuickBooks and Xero: CAD home currency only; unmapped tax codes are refused.
+
+### Voiding or deleting a payment
+
+`accounting.payment.void` and `accounting.payment.delete` reverse a payment
+written through this API (its `erp_id` is the payment's). QuickBooks only, for
+now; Xero answers `422 accounting.capability_unsupported`. Both ship disabled
+until QuickBooks qualifies them.
+
+- `void_id` / `delete_id` is your stable id for this reversal; retries reuse
+  it. `payment.expected_revision` is the payment's last `revision`.
+- The payment must be applied to one invoice or to none. A payment over
+  several invoices, a credit application, a payment with a refund written
+  through this API, and a payment dated on or before the closing date are
+  refused (`409`). A second void or delete of the same payment is refused
+  while the first is in flight or after it succeeded; a deleted payment
+  cannot be voided, and a voided payment is not deleted.
+- The result is the payment with `status` `voided` (its `total_amount` is
+  `0.00`) or `deleted`, and the payment's new `revision`.
+- A void or delete done in QuickBooks itself is recorded too, and sent as an
+  `accounting.document.status_changed` event.
 
 ## Getting the result
 
@@ -291,8 +313,9 @@ across organisations). It removes only this organisation's Xero connection.
 
 ### Operations
 
-All nine neutral operations translate to a native Xero write, and every one
-is seeded disabled:
+The nine operations below translate to a native Xero write, and every one
+is seeded disabled. `accounting.payment.void` and `accounting.payment.delete`
+are not supported on Xero yet (`422 accounting.capability_unsupported`).
 
 - `accounting.customer.upsert` → `xero.contact.upsert` (a Xero Contact)
 - `accounting.item.upsert` → `xero.item.upsert` (a Xero Item)

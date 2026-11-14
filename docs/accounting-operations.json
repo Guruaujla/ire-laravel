@@ -214,6 +214,20 @@
         }
       }
     },
+    "accounting.payment.update": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.payment.update",
+      "erp_id": "PAY-503",
+      "idempotency_key": "payment:PAY-503:update:PCHG-1",
+      "payload": {
+        "change_id": "PCHG-1",
+        "payment": {
+          "expected_revision": "0",
+          "amount": "250.00",
+          "reference": "CHQ-1043"
+        }
+      }
+    },
     "accounting.refund.create": {
       "tenant_id": "ten_01JEXAMPLE",
       "operation": "accounting.refund.create",

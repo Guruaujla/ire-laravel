@@ -69,6 +69,7 @@ Every operation is a `POST /v1/operations/execute` with this envelope:
 | `quickbooks.payment.create` | `erp.quickbooks.payment.created` | 2 | `erp.payment.created` | `payment` |
 | `quickbooks.payment.void` | `erp.quickbooks.payment.voided` | 1 | `erp.payment.voided` | `payment_void` |
 | `quickbooks.payment.delete` | `erp.quickbooks.payment.deleted` | 1 | `erp.payment.deleted` | `payment_delete` |
+| `quickbooks.payment.update` | `erp.quickbooks.payment.updated` | 1 | `erp.payment.updated` | `payment_update` |
 | `quickbooks.refund.create` | `erp.quickbooks.refund.created` | 3 | `erp.refund.created` | `refund_receipt` |
 | `quickbooks.credit_memo.create` | `erp.quickbooks.credit_memo.created` | 1 | `erp.credit_memo.created` | `credit_memo` |
 | `quickbooks.credit_memo.apply` | `erp.quickbooks.credit_memo.applied` | 1 | `erp.credit_memo.applied` | `credit_application` |
@@ -141,6 +142,20 @@ one Invoice or to none, dated after the closing date, and have no refund
 written through the runtime. A stale SyncToken is a conflict: re-read and ask
 the user. A deleted Payment cannot be voided, and a voided Payment is not
 deleted.
+
+### Payment update
+
+Seeded disabled. Prefer `accounting.payment.update`. The payload is the same
+`payment_reversal` with `kind: "update"` and a `change` object holding at
+least one of `total_amount` (positive, two decimals), `txn_date`,
+`payment_method_ref`, `deposit_account_ref` (QuickBooks ids) and `reference`
+(1-21 characters). `internal_object_id` is your change id. In the CCDO slot the
+runtime reads the Payment fresh (and its Invoice when the amount changes),
+freezes the resulting fields, claims the payment and only then sends one sparse
+update with the frozen SyncToken. The applied amount is the smaller of the new
+total and the Invoice's open balance plus what the Payment already applies;
+the rest stays unapplied. Both the current and the new date must be after the
+closing date. The same refusals as for a void apply.
 
 ### Refund
 

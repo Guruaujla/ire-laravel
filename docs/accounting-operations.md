@@ -78,6 +78,7 @@ document before anything else.
 | `accounting.payment.create` | ERP payment id | `payment` {date, amount, currency, customer, payment_method, deposit_account, reference?}, `invoice` {erp_id, expected_revision, expected_balance} |
 | `accounting.payment.void` | ERP payment id | `void_id`, `payment.expected_revision` |
 | `accounting.payment.delete` | ERP payment id | `delete_id`, `payment.expected_revision` |
+| `accounting.payment.update` | ERP payment id | `change_id`, `payment.expected_revision`, and any of `payment.amount`, `.date`, `.payment_method`, `.deposit_account`, `.reference` |
 | `accounting.refund.create` | ERP refund id | `refund` {number, date, lines with `original_erp_line_id`, payment_method, refund_account}, `expected_totals`, `original_invoice` {erp_id, before_totals}, `original_payment.erp_id` |
 | `accounting.credit_memo.create` | ERP credit memo id | `credit_memo` {number, date, lines with `original_erp_line_id`}, `expected_totals`, `original_invoice` {erp_id, before_totals} |
 | `accounting.credit_memo.apply` | ERP application id | `application` {date, amount, currency, customer}, `credit_memo.erp_id`, `invoice` {erp_id, before_totals} |
@@ -117,6 +118,33 @@ until QuickBooks qualifies them.
   `0.00`) or `deleted`, and the payment's new `revision`.
 - A void or delete done in QuickBooks itself is recorded too, and sent as an
   `accounting.document.status_changed` event.
+
+### Updating a payment
+
+`accounting.payment.update` changes a payment written through this API.
+QuickBooks only; Xero has no payment update and answers
+`422 accounting.capability_unsupported` (delete the payment and create a new
+one under a new `erp_id`). It ships disabled until QuickBooks qualifies it.
+
+- `change_id` is your stable id for this change; retries reuse it.
+  `payment.expected_revision` is the payment's last `revision`. Send at least
+  one of `amount`, `date`, `payment_method`, `deposit_account` and
+  `reference`; anything you leave out stays as it is.
+- A new `amount` is applied to the payment's invoice up to that invoice's
+  open balance plus what this payment already applies, and the rest stays
+  unapplied as customer credit. There is no cap. A payment applied to no
+  invoice changes only its total. An update never moves a payment to another
+  invoice.
+- When `date` changes, both the current and the new date must be after the
+  closing date.
+- The same targets are refused as for a void (`409`): several invoices, a
+  credit application, a refund written through this API, a payment voided or
+  deleted, or another void, delete or update of it still in flight. Changing
+  the amount of a payment that has several lines is refused too.
+- The result is the payment with its new `revision`, `total_amount` and
+  `unapplied_amount`, and its invoice's `balance` and `revision`. The
+  invoice's new balance is also sent as an `accounting.document.status_changed`
+  event.
 
 ## Getting the result
 
@@ -315,7 +343,8 @@ across organisations). It removes only this organisation's Xero connection.
 
 The nine operations below translate to a native Xero write, and every one
 is seeded disabled. `accounting.payment.void` and `accounting.payment.delete`
-are not supported on Xero yet (`422 accounting.capability_unsupported`).
+are not supported on Xero yet, and `accounting.payment.update` never is (Xero
+has no payment update): each answers `422 accounting.capability_unsupported`.
 
 - `accounting.customer.upsert` → `xero.contact.upsert` (a Xero Contact)
 - `accounting.item.upsert` → `xero.item.upsert` (a Xero Item)

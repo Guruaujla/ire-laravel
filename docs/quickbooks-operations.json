@@ -264,6 +264,33 @@
         }
       }
     },
+    "quickbooks.payment.update": {
+      "summary": "Sparse-update one runtime Payment's amount, date, method, deposit account or reference at the SyncToken the ERP last saw. A new amount is applied to the payment's invoice up to its open balance plus what the payment already applies; the rest stays unapplied. A changed SyncToken, a payment over several invoices or one named by a runtime refund is refused; never refetch and retry automatically.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.payment.updated",
+        "recipe_version": 1,
+        "trigger_type": "erp.payment.updated",
+        "object_type": "payment_update",
+        "internal_object_id": "PCHG-1",
+        "idempotency_key": "erp_payment_301:update:PCHG-1",
+        "payload": {
+          "payment_reversal": {
+            "kind": "update",
+            "provider_account_id": "1234567890",
+            "payment_id": "301",
+            "payment_erp_id": "PAY-301",
+            "expected_sync_token": "0",
+            "change": {
+              "total_amount": "250.00",
+              "reference": "CHQ-1043"
+            }
+          }
+        }
+      }
+    },
     "quickbooks.refund.create": {
       "summary": "Record an accounting RefundReceipt against an original sale and its positive-cash Payment. Does not process a card refund.",
       "request": {

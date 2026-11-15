@@ -4,6 +4,8 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- Docs: `accounting-operations.md` documents the Xero payment void and
+  delete (both delete the payment in Xero).
 - Docs: `accounting-operations.md` documents `accounting.invoice_has_payment`,
   the job status `error.message`, and `GET /v1/sync-jobs?completed_since=`.
 

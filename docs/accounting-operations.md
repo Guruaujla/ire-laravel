@@ -102,9 +102,10 @@ Rules that apply to all of them:
 ### Voiding or deleting a payment
 
 `accounting.payment.void` and `accounting.payment.delete` reverse a payment
-written through this API (its `erp_id` is the payment's). QuickBooks only, for
-now; Xero answers `422 accounting.capability_unsupported`. Both ship disabled
-until QuickBooks qualifies them.
+written through this API (its `erp_id` is the payment's). On QuickBooks they
+are a void and a delete. Xero has no void, so on Xero both delete the payment
+(see [Xero](#xero) below). Both ship disabled until each provider
+qualifies them.
 
 - `void_id` / `delete_id` is your stable id for this reversal; retries reuse
   it. `payment.expected_revision` is the payment's last `revision`.
@@ -115,8 +116,9 @@ until QuickBooks qualifies them.
   while the first is in flight or after it succeeded; a deleted payment
   cannot be voided, and a voided payment is not deleted.
 - The result is the payment with `status` `voided` (its `total_amount` is
-  `0.00`) or `deleted`, and the payment's new `revision`.
-- A void or delete done in QuickBooks itself is recorded too, and sent as an
+  `0.00`) or `deleted`, and the payment's new `revision`. A deleted Xero
+  payment has no revision: its `revision` is the literal `deleted`.
+- A void or delete done in the provider itself is recorded too, and sent as an
   `accounting.document.status_changed` event.
 
 ### Updating a payment
@@ -341,10 +343,9 @@ across organisations). It removes only this organisation's Xero connection.
 
 ### Operations
 
-The nine operations below translate to a native Xero write, and every one
-is seeded disabled. `accounting.payment.void` and `accounting.payment.delete`
-are not supported on Xero yet, and `accounting.payment.update` never is (Xero
-has no payment update): each answers `422 accounting.capability_unsupported`.
+The operations below translate to a native Xero write, and every one is
+seeded disabled. `accounting.payment.update` is not supported (Xero has no
+payment update) and answers `422 accounting.capability_unsupported`.
 
 - `accounting.customer.upsert` → `xero.contact.upsert` (a Xero Contact)
 - `accounting.item.upsert` → `xero.item.upsert` (a Xero Item)
@@ -352,6 +353,17 @@ has no payment update): each answers `422 accounting.capability_unsupported`.
   `xero.invoice.update`, `xero.invoice.void` (ACCREC invoices, created
   AUTHORISED)
 - `accounting.payment.create` → `xero.payment.create`
+- `accounting.payment.void` and `accounting.payment.delete` →
+  `xero.payment.delete` (Xero has no void; both set the payment `DELETED`).
+  The `void_id` or `delete_id` is the request id, and on Xero they share one
+  idempotency namespace: a void and a delete with the same id are one
+  request, so never reuse a `void_id` as a `delete_id` (or the reverse) for
+  a different reversal. A payment Xero already shows deleted answers
+  `deleted` without a write. Xero refuses a reconciled payment and a payment
+  in a batch payment: both are `409 accounting.unsupported_change`; unreconcile
+  it, or remove it from the batch, in Xero first. The lock date is checked
+  against the payment's own date. A delete whose outcome is uncertain is never
+  re-sent; only a read showing the payment deleted completes it.
 - `accounting.credit_memo.create` → `xero.credit_note.create`
 - `accounting.credit_memo.apply` → `xero.credit_note.allocate`
 - `accounting.refund.create` → `xero.refund.create`

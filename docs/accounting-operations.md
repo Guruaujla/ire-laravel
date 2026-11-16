@@ -248,6 +248,14 @@ Other reads:
   has no customer email, or a Xero invoice is not yet approved. It is a
   fresh provider read (one call) each time, so read it again before you send
   it rather than storing it. PHP SDK: `onlineLink()`.
+- `GET …/documents/{invoice|credit_memo}/{erp_id}/pdf?tenant_id=…` returns the
+  PDF the provider renders now (`application/pdf`; QuickBooks invoice or
+  credit memo, Xero invoice or credit note) for a document the runtime wrote.
+  The response header `X-IR-Provider-Id` names the provider document. At most
+  4 MiB; a larger PDF is `503 accounting.provider_unavailable`. A document
+  deleted in the provider is `410 accounting.document_deleted` here and on the
+  online-link read. One provider
+  call each time; the runtime does not keep the file. PHP SDK: `pdf()`.
 - `accounting.document.status_changed` webhook (opt in by listing it in the
   endpoint's `event_types`): `data.document` has the same shape, for documents
   the runtime wrote. The Laravel package (1.3.0 and later) verifies it and
@@ -449,6 +457,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.mapping_missing` (409) | An ERP customer, item or code has no usable mapping. `mapping_kind`, `mapping_erp_code` and `mapping_state` say what to map. | Map it, then resend the same request. | `fix_setup` |
 | `accounting.record_type_disabled` (409) | The connection's settings exclude this record type. | Turn it on with `PUT …/settings` if it should sync, then resend the same request. | `fix_setup` |
 | `accounting.document_unlinked` (409) | The referenced invoice (or the payment a refund returns) has no verified provider document on this connection. | Create it through the runtime, or link one created through `quickbooks()`, then resend. | `fix_setup` |
+| `accounting.document_deleted` (410) | The provider no longer has the document this connection wrote (it was deleted there). Returned by the online-link and PDF reads. | Treat the document as gone in the provider; do not retry. | `do_not_sync` |
 | `accounting.no_accounting_connection`, `accounting.multiple_accounting_connections` (409) | The tenant has no, or several, accounting connections. | Connect one, or disconnect the extra one (`connections()->disconnect()` in the PHP SDK 1.7.0+, with its stored `provider_account_id`); passing `connection_id` does not resolve several. | `fix_setup` |
 | `accounting.connection_exists` (409, from `POST /v1/connections/connect-session`) | The customer already has an active connection to a different accounting provider; `connection_id` and `provider_key` name it. | Disconnect it first (`POST /v1/connections/{id}/disconnect`; `connections()->disconnect()` in the PHP SDK 1.7.0+), then connect the new provider. Its documents stay in the old provider. | `fix_setup` |
 | `accounting.revision_conflict` (409) | The document changed since your revision or before-state. | Refresh, reconcile with a person, send as a new business event with a new key. Never retry it blindly. | `review_and_resubmit` |

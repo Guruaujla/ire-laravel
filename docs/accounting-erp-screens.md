@@ -206,15 +206,17 @@ duplicates.
    | `reason` | Show |
    | --- | --- |
    | `bound_to_other_record` | "Already used by" the ERP record `bound_erp_id`. Unmap or rebind that one, or pick another. |
-   | `record_already_bound` | This ERP record is already mapped to `bound_provider_ref`: keep it, or pick it. |
+   | `record_already_bound` | No longer returned by a bind (binds re-bind). Show "Already mapped to `bound_provider_ref`". |
    | `not_usable_for_kind` | "Can't be used here" (for example a purchase-only tax rate or a category item). Pick another. |
    | `inactive` | "Inactive in the provider." Pick another, or reactivate it there. |
    | `ambiguous` | "Matches several provider records." Pick a specific one. |
    | `pending_change`, `connection_changed` | Retry (these come with `accounting.provider_unavailable`). |
    | absent or anything else | Show `code`. |
 
-   After a reconnect, an ERP id's own earlier binding no longer counts:
-   binding that ERP id to another record is not refused.
+   Binding an ERP record that is already bound to another provider record
+   re-binds it, on every provider. Only invoices written after the re-bind
+   use the new record. It waits (`pending_change`) while a create or update
+   of that ERP record, or another change of its mapping, is running.
 
 `listRecords($tenantId, $connectionId, $entity, $cursor)` pages through all
 provider records. Use it for a "browse provider records" view. Inactive
@@ -293,8 +295,10 @@ with `accounting.snapshot_key_changed`. Start a new snapshot in both cases.
 ## 4. Code mappings
 
 One section per entry in `mapping_kinds` whose `granularity` is `code`. For
-QuickBooks these are tax code, payment method, deposit account, refund
-account and income account. Use `label` as the heading, and `required_for`
+QuickBooks these are payment method, deposit account, refund account and
+income account; for Xero, the same without payment method. Tax codes are
+`record` on every provider: match and bind them on the screen above, or map
+them here with a treatment. Use `label` as the heading, and `required_for`
 to say which operations need it.
 
 For each ERP code (for example your `HST-ON` tax code or `VISA` payment

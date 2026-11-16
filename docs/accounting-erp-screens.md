@@ -147,8 +147,11 @@ duplicates.
 
 1. Load a page of ERP records and send them to `matchRecords($tenantId,
    $connectionId, $entity, $records)`, at most 100 per call. Send customers
-   as `{erp_id, name, email?}`, items as `{erp_id, name, sku?}` and tax codes
-   as `{erp_id, name, rate_percent?}`. Tax names rarely match between an ERP
+   as `{erp_id, name, email?, tax_number?, account_number?}`, items as
+   `{erp_id, name, sku?}` and tax codes as `{erp_id, name, rate_percent?}`.
+   A customer's `tax_number` and `account_number` only ever suggest, never
+   match: Xero compares `account_number` live and both from a snapshot;
+   QuickBooks has neither, so they come back in `unsupported_keys`. Tax names rarely match between an ERP
    and the provider ("GST" vs Xero's "AB - GST on Sales"), so send the ERP
    rate (`"5"`, `"14.975"`): a tax code whose name matches nothing is
    `suggested` the active sales tax codes with the same rate. On both
@@ -168,7 +171,15 @@ duplicates.
    `usable: false` and show its `unusable_reason` (`inactive`: archived in
    the provider; `not_usable_for_kind`: for example a QuickBooks Category
    item). Show each candidate's `match_reasons` (`email`, `sku`, `name`,
-   or `rate` for a tax code offered by its rate). When a result has a
+   `tax_number`, `account_number`, `loose_name` when the names are equal
+   only once punctuation and spacing are ignored, or `rate` for a tax code
+   offered by its rate). A `loose_name`, `tax_number` or `account_number`
+   candidate is never preselected. Loose names are compared against a
+   snapshot and tax codes; a live customer or item match finds rows by exact
+   keys only. A provider email field holding several addresses (QuickBooks
+   allows `a@x.com, b@y.com`) equals each of them as an email key, so it can
+   be `matched` on one; a live QuickBooks match finds such a customer by its
+   name (the email search is exact), a snapshot by any address. When a result has a
    `not_matched_reason`, show it next to the picker:
 
    | `not_matched_reason` | Show |
@@ -177,7 +188,9 @@ duplicates.
    | `ambiguous` | "Several provider records match; pick one." |
    | `bound_to_other_record`, `inactive`, `not_usable_for_kind` | As for a bind refusal below. |
 
-   If `unsupported_keys` is not empty, say "matched by name only". A result
+   If `unsupported_keys` holds `email` or `sku`, say "matched by name only";
+   `tax_number` or `account_number` there means that key was not compared.
+   A result
    with `unsearchable_keys` has a value the provider cannot search (for
    example a Xero name containing `"`); offer a manual search.
 3. **Bind** sends only the rows a person confirmed, at most 25 per call:

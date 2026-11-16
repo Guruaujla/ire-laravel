@@ -163,10 +163,19 @@ duplicates.
    For tax codes, add `treatment`.
 4. Show each row's result `status`. `bound` is done. Retry `rate_limited`
    (after `retry_after` seconds) and `not_attempted`. Show `refused` with its
-   `code`; for example, `accounting.mapping_conflict` means the record is
-   already bound elsewhere. When the row also has `bound_provider_ref`, the
-   ERP id itself is already bound to that provider record: keep it, or pick
-   it. After a reconnect, an ERP id's own earlier binding no longer counts:
+   `reason`, which has the same values on every provider:
+
+   | `reason` | Show |
+   | --- | --- |
+   | `bound_to_other_record` | "Already used by" the ERP record `bound_erp_id`. Unmap or rebind that one, or pick another. |
+   | `record_already_bound` | This ERP record is already mapped to `bound_provider_ref`: keep it, or pick it. |
+   | `not_usable_for_kind` | "Can't be used here" (for example a purchase-only tax rate or a category item). Pick another. |
+   | `inactive` | "Inactive in the provider." Pick another, or reactivate it there. |
+   | `ambiguous` | "Matches several provider records." Pick a specific one. |
+   | `pending_change`, `connection_changed` | Retry (these come with `accounting.provider_unavailable`). |
+   | absent or anything else | Show `code`. |
+
+   After a reconnect, an ERP id's own earlier binding no longer counts:
    binding that ERP id to another record is not refused.
 
 `listRecords($tenantId, $connectionId, $entity, $cursor)` pages through all

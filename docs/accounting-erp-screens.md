@@ -122,9 +122,15 @@ admin to confirm first: writes stop at once.
 `settings($tenantId, $connectionId)` returns `sync_start_date`,
 `record_types`, `historical_sync` and `revision`.
 
-- Show `sync_start_date` read-only, as "Documents dated before this date are
-  not synced". It is set when the customer connects. Earlier documents are
+- Show `sync_start_date` as "Documents dated before this date are not
+  synced". It is set to the day the customer connects. Earlier documents are
   refused with `accounting.before_sync_start` (`do_not_sync`).
+- To sync older documents, let the admin move the date earlier with
+  `updateSettings($tenantId, $connectionId, null, $settings['revision'],
+  '2026-01-01')`. First match or link the provider's existing records of that
+  period (section 3), or documents already in the provider may be written
+  twice. Moving it later also refuses later updates, voids, payments and
+  credits dated before the new date.
 - Show one toggle per record type: invoice, payment, credit memo, refund.
   Save with `updateSettings($tenantId, $connectionId, $enabledTypes,
   $settings['revision'])`.

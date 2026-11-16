@@ -70,8 +70,8 @@ document before anything else.
 
 | Operation | `erp_id` | Payload |
 | --- | --- | --- |
-| `accounting.customer.upsert` | ERP customer id | `customer` {name, email?, currency} |
-| `accounting.item.upsert` | ERP item id | `item` {name, type `service`, income_account (ERP code), unit_price, description?} |
+| `accounting.customer.upsert` | ERP customer id | `customer` {name, email?, currency, phone?, first_name?, last_name?, company_name? (QuickBooks only), billing_address?, shipping_address?}; an address is {line1, line2?, city?, region?, postal_code?, country?} and replaces the stored one (omitted parts are cleared); phone, names and addresses are written but not read back |
+| `accounting.item.upsert` | ERP item id | `item` {name, type `service` or `non_inventory`, income_account (ERP code), unit_price, description?, sku? (QuickBooks only)}; an update keeps the item's QuickBooks type; a different type (or an Inventory item) fails the job with `accounting.unsupported_change` |
 | `accounting.invoice.create` | ERP invoice id | `invoice` {number?, issue_date, due_date?, currency, customer.erp_id, lines}, `expected_totals` |
 | `accounting.invoice.update` | ERP invoice id | `change_id`, the full new `invoice` (same customer, issue date, items, tax codes and line ids), `expected_totals`, `before` {expected_revision, totals} |
 | `accounting.invoice.void` | ERP invoice id | `void_id`, `invoice` {issue_date, currency, customer, expected_revision, before_totals} |
@@ -348,8 +348,12 @@ The operations below translate to a native Xero write, and every one is
 seeded disabled. `accounting.payment.update` is not supported (Xero has no
 payment update) and answers `422 accounting.capability_unsupported`.
 
-- `accounting.customer.upsert` → `xero.contact.upsert` (a Xero Contact)
-- `accounting.item.upsert` → `xero.item.upsert` (a Xero Item)
+- `accounting.customer.upsert` → `xero.contact.upsert` (a Xero Contact). The
+  billing address is the contact's POBOX address and the shipping address its
+  STREET address; the phone is its DEFAULT phone. `company_name` is not sent
+  (the contact name is the company).
+- `accounting.item.upsert` → `xero.item.upsert` (a Xero Item). `service` and
+  `non_inventory` are both an untracked Xero item; `sku` is not sent.
 - `accounting.invoice.create`, `.update`, `.void` → `xero.invoice.create`,
   `xero.invoice.update`, `xero.invoice.void` (ACCREC invoices, created
   AUTHORISED)
@@ -466,7 +470,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.settings_conflict` (409) | The settings changed since your `expected_revision`. | `GET` the settings again, reapply the change and resend with the new revision. | `fix_request` |
 | `accounting.mapping_conflict` (409) | The provider record is bound to another ERP id, the ERP id is already bound to a different record (`bound_provider_ref` names it), or the record is ambiguous or changed during verification. A binding of the ERP id made before the last reconnect does not count. | Read `reason` (same values on every provider): `bound_to_other_record` (`bound_erp_id` holds the record: unmap or rebind that ERP id, or choose another record), `record_already_bound` (keep `bound_provider_ref` or bind to it), `not_usable_for_kind` or `ambiguous` (choose another record). | `fix_request` |
 | `accounting.reference_invalid` (409), `accounting.reference_not_found` (404) | The provider record is unusable for this kind (`reason`: `inactive` or `not_usable_for_kind`), or does not exist. | Choose an active record of the right type. | `fix_request` |
-| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"). | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first. | `fix_request` |
+| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"), or (job error) a QuickBooks item update whose `type` differs from the provider item. | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first. | `fix_request` |
 | `accounting.mapping_not_found` (404) | No mapping for this kind and ERP code. | Create it with `PUT …/mappings/{kind}/{erp_code}`. | `fix_request` |
 | `accounting.connection_not_found` (404) | The connection id is not this tenant's accounting connection. | Read it from `GET /v1/accounting/providers`. | `fix_request` |
 | `accounting.operation_not_found` (404) | Unknown `job_id` for this tenant. | Use the `job_id` from the `202`. | `fix_request` |

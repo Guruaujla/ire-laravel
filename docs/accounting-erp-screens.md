@@ -269,6 +269,10 @@ $providerRef, $treatment)`. Show the mapping `state` beside each code:
 | `inactive`, `drifted` | "The provider record changed or was deactivated: choose again." |
 | `missing`, `incomplete`, `pending`, or anything else | "Not usable: map it." |
 
+To unmap a code, `deleteMapping($tenantId, $connectionId, $kind, $erpCode)`. For a
+tax code this also frees the provider tax code or rate, so another ERP code can
+use it, or this code can be mapped again.
+
 ```php
 // Controller for one dropdown page (Laravel)
 public function options(string $kind, Request $request)

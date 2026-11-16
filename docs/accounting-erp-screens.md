@@ -150,9 +150,11 @@ duplicates.
    as `{erp_id, name, email?}`, items as `{erp_id, name, sku?}` and tax codes
    as `{erp_id, name, rate_percent?}`. Tax names rarely match between an ERP
    and the provider ("GST" vs Xero's "AB - GST on Sales"), so send the ERP
-   rate (`"5"`, `"14.975"`): on Xero a tax code whose name matches nothing is
-   `suggested` the active sales rates with the same rate. Xero's tax code list
-   holds only sales rates, each with its `rate_percent`.
+   rate (`"5"`, `"14.975"`): a tax code whose name matches nothing is
+   `suggested` the active sales tax codes with the same rate. On both
+   QuickBooks and Xero the active tax codes listed are sales codes only, each
+   with its `rate_percent` (on QuickBooks, the sum of the code's sales rates);
+   inactive codes are listed with `usable: false`.
 2. Show one row per result:
 
    | `status` | Show |
@@ -162,7 +164,10 @@ duplicates.
    | `none` | "No match". Offer "Create in provider" (`upsertCustomer` / `upsertItem`), or leave it for later. |
 
    Disable a candidate whose `bound_erp_id` is another ERP id, because it
-   already belongs to another record. If `unsupported_keys` is not empty, say
+   already belongs to another record. Grey out a candidate with
+   `usable: false` and show its `unusable_reason` (`inactive`: archived in
+   the provider; `not_usable_for_kind`: for example a QuickBooks Category
+   item). If `unsupported_keys` is not empty, say
    "matched by name only".
 3. **Bind** sends only the rows a person confirmed, at most 25 per call:
    `bindRecords($tenantId, $connectionId, $entity, [['erp_id' => ..., 'provider_ref' => ...], ...])`.
@@ -270,7 +275,12 @@ method), show a dropdown of provider records:
 
 - Payment method and accounts: `referenceOptions($tenantId, $connectionId,
   $kind, $cursor, 50)`. It returns `items` (`provider_ref`, `name`,
-  `active`) and `next_cursor`. Offer only `active` ones.
+  `active`, `usable`) and `next_cursor`. Offer only `usable` ones. Accounts
+  also carry `account_type` and `account_code`: show them beside the name, so
+  an equity or expense account is not picked for deposits by mistake. The
+  usual picks (a bank account, or QuickBooks Undeposited Funds, for deposits
+  and refunds) carry `recommended: true` and come first; label them
+  "Recommended". Any listed account still maps.
 - Tax codes: `listRecords($tenantId, $connectionId, 'tax_code', $cursor)`.
   Add a treatment select: `taxable`, `zero_rated`, `exempt`,
   `not_applicable`.

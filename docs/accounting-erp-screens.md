@@ -141,7 +141,12 @@ duplicates.
 
 1. Load a page of ERP records and send them to `matchRecords($tenantId,
    $connectionId, $entity, $records)`, at most 100 per call. Send customers
-   as `{erp_id, name, email?}` and items as `{erp_id, name, sku?}`.
+   as `{erp_id, name, email?}`, items as `{erp_id, name, sku?}` and tax codes
+   as `{erp_id, name, rate_percent?}`. Tax names rarely match between an ERP
+   and the provider ("GST" vs Xero's "AB - GST on Sales"), so send the ERP
+   rate (`"5"`, `"14.975"`): on Xero a tax code whose name matches nothing is
+   `suggested` the active sales rates with the same rate. Xero's tax code list
+   holds only sales rates, each with its `rate_percent`.
 2. Show one row per result:
 
    | `status` | Show |

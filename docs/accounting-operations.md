@@ -302,8 +302,9 @@ included).
   organisation's Xero connection is already in use by another live connection
   of this integration (both `reason=organisation_already_connected`), or when
   the organisation's base currency is not CAD (`reason=unsupported_currency`).
-  The browser comes back to your `return_url` with `status=failed` and that
-  `reason`.
+  The browser comes back to your `return_url` with `status=failed`, that
+  `reason`, and your `state` when you sent one, so you can match the return to
+  the connect that started it.
 - For `organisation_already_connected`, tell the customer: "This organisation
   is already connected through this integration. If it should be free,
   disconnect it from the other system first. Do not remove the app in Xero

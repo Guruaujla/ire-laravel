@@ -240,6 +240,14 @@ Other reads:
   before results carried `tax_lines`. For Xero this read makes one more Xero
   call (the tax rates). Whenever `tax_lines` is left out of a result or is
   `null` on a read, the runtime records why (`accounting.tax_lines.omitted`).
+- `GET …/documents/invoice/{erp_id}/online-link?tenant_id=…` returns the
+  customer's online view-and-pay link of an invoice the runtime wrote
+  (`provider_key`, `erp_id`, `provider_id`, `url`): QuickBooks `InvoiceLink`,
+  Xero `OnlineInvoiceUrl`. `url` is `null` when the provider has none for the
+  invoice now, for example QuickBooks online payments are off or the invoice
+  has no customer email, or a Xero invoice is not yet approved. It is a
+  fresh provider read (one call) each time, so read it again before you send
+  it rather than storing it. PHP SDK: `onlineLink()`.
 - `accounting.document.status_changed` webhook (opt in by listing it in the
   endpoint's `event_types`): `data.document` has the same shape, for documents
   the runtime wrote. The Laravel package (1.3.0 and later) verifies it and

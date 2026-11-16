@@ -159,7 +159,7 @@ duplicates.
 
    | `status` | Show |
    | --- | --- |
-   | `matched` | Preselect `provider_ref`. Show `matched_on` (email, SKU or name). |
+   | `matched` | Preselect `provider_ref`. Show `matched_on` (email, SKU or name). A customer with no email, or an item with no SKU, is matched by name where the provider keeps names unique (QuickBooks customers and items, Xero contacts): show "matched by name". |
    | `suggested` | A picker of `candidates`. Nothing is preselected. |
    | `none` | "No match". Offer "Create in provider" (`upsertCustomer` / `upsertItem`), or leave it for later. |
 
@@ -167,11 +167,25 @@ duplicates.
    already belongs to another record. Grey out a candidate with
    `usable: false` and show its `unusable_reason` (`inactive`: archived in
    the provider; `not_usable_for_kind`: for example a QuickBooks Category
-   item). If `unsupported_keys` is not empty, say
-   "matched by name only".
+   item). Show each candidate's `match_reasons` (`email`, `sku`, `name`,
+   or `rate` for a tax code offered by its rate). When a result has a
+   `not_matched_reason`, show it next to the picker:
+
+   | `not_matched_reason` | Show |
+   | --- | --- |
+   | `shared_with_other_record` | "Another ERP record in this list matched the same provider record; pick one." |
+   | `ambiguous` | "Several provider records match; pick one." |
+   | `bound_to_other_record`, `inactive`, `not_usable_for_kind` | As for a bind refusal below. |
+
+   If `unsupported_keys` is not empty, say "matched by name only". A result
+   with `unsearchable_keys` has a value the provider cannot search (for
+   example a Xero name containing `"`); offer a manual search.
 3. **Bind** sends only the rows a person confirmed, at most 25 per call:
    `bindRecords($tenantId, $connectionId, $entity, [['erp_id' => ..., 'provider_ref' => ...], ...])`.
-   For tax codes, add `treatment`.
+   For tax codes, add `treatment`; preselect the record's
+   `suggested_treatment` when it has one. A batch that names one
+   `provider_ref` twice is refused with `400` before anything is bound, and
+   `errors` names each repeat.
 4. Show each row's result `status`. `bound` is done. Retry `rate_limited`
    (after `retry_after` seconds) and `not_attempted`. Show `refused` with its
    `reason`, which has the same values on every provider:

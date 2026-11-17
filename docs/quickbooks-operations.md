@@ -66,6 +66,7 @@ Every operation is a `POST /v1/operations/execute` with this envelope:
 | `quickbooks.invoice.create` | `erp.quickbooks.invoice.created` | 5 | `erp.invoice.created` | `invoice` |
 | `quickbooks.invoice.update_sparse` | `erp.quickbooks.invoice.updated` | 1 | `erp.invoice.updated` | `invoice_update` |
 | `quickbooks.invoice.void` | `erp.quickbooks.invoice.voided` | 1 | `erp.invoice.voided` | `invoice_void` |
+| `quickbooks.invoice.delete` | `erp.quickbooks.invoice.deleted` | 1 | `erp.invoice.deleted` | `invoice_delete` |
 | `quickbooks.payment.create` | `erp.quickbooks.payment.created` | 2 | `erp.payment.created` | `payment` |
 | `quickbooks.payment.void` | `erp.quickbooks.payment.voided` | 1 | `erp.payment.voided` | `payment_void` |
 | `quickbooks.payment.delete` | `erp.quickbooks.payment.deleted` | 1 | `erp.payment.deleted` | `payment_delete` |
@@ -120,9 +121,17 @@ new totals. Use one `idempotency_key` and `internal_object_id` per ERP change.
 ### Invoice void
 
 `invoice_void` contains only `Id` and the current `SyncToken`, plus
-`original_invoice`. The Invoice must be unpaid and unlinked. A stale SyncToken
-is a conflict: re-read the Invoice and ask the user. Never refetch the token and
-void automatically.
+`original_invoice`. A Payment applied to the Invoice stays, unapplied; an
+Invoice with a refund or credit memo written through this API is refused. A
+stale SyncToken is a conflict: re-read the Invoice and ask the user. Never
+refetch the token and void automatically.
+
+### Invoice delete
+
+`invoice_delete` has the same shape as `invoice_void` ({`Id`, `SyncToken`},
+plus `original_invoice`) and the same rules. The result is the Invoice with
+`status: deleted`; it is proven only by QuickBooks' deleted answer for the
+same `Id`, or its change log, never by the Invoice no longer being found.
 
 ### Payment
 

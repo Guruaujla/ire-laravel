@@ -166,6 +166,37 @@
         }
       }
     },
+    "accounting.invoice.delete": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.invoice.delete",
+      "erp_id": "INV-1002",
+      "idempotency_key": "invoice:INV-1002:delete:IDEL-1",
+      "payload": {
+        "delete_id": "IDEL-1",
+        "invoice": {
+          "issue_date": "2026-10-28",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "expected_revision": "1",
+          "before_totals": {
+            "net_amount": "100.00",
+            "total_tax": "13.00",
+            "total_amount": "113.00",
+            "tax_lines": [
+              {
+                "tax_code": "HST",
+                "component": "HST ON",
+                "rate_percent": "13",
+                "taxable_amount": "100.00",
+                "tax_amount": "13.00"
+              }
+            ]
+          }
+        }
+      }
+    },
     "accounting.payment.create": {
       "tenant_id": "ten_01JEXAMPLE",
       "operation": "accounting.payment.create",

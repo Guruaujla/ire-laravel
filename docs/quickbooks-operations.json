@@ -143,7 +143,7 @@
       }
     },
     "quickbooks.invoice.void": {
-      "summary": "Void an unpaid, unlinked Invoice with its current SyncToken. A stale token is a conflict; never refetch and retry automatically.",
+      "summary": "Void an Invoice with its current SyncToken; a Payment applied to it stays, unapplied. A stale token is a conflict; never refetch and retry automatically.",
       "request": {
         "tenant_id": "tenant_example",
         "provider_key": "quickbooks",
@@ -173,6 +173,43 @@
             ]
           },
           "invoice_void": {
+            "Id": "101",
+            "SyncToken": "2"
+          }
+        }
+      }
+    },
+    "quickbooks.invoice.delete": {
+      "summary": "Delete an Invoice with its current SyncToken; a Payment applied to it stays, unapplied. A stale token is a conflict; never refetch and retry automatically. A deleted invoice's ERP id is never reused.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.invoice.deleted",
+        "recipe_version": 1,
+        "trigger_type": "erp.invoice.deleted",
+        "object_type": "invoice_delete",
+        "internal_object_id": "IDEL-101",
+        "idempotency_key": "erp_invoice_101:delete",
+        "payload": {
+          "original_invoice": {
+            "provider_account_id": "1234567890",
+            "external_id": "101",
+            "customer_ref": "7",
+            "currency": "CAD",
+            "net_amount": "100.00",
+            "total_tax": "10.00",
+            "total_amount": "110.00",
+            "tax_lines": [
+              {
+                "tax_rate_ref": "44",
+                "tax_percent": "10",
+                "net_amount_taxable": "100.00",
+                "amount": "10.00"
+              }
+            ]
+          },
+          "invoice_delete": {
             "Id": "101",
             "SyncToken": "2"
           }

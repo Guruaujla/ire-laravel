@@ -42,7 +42,8 @@ release gate returns `403 accounting.operation_disabled`; do not loop on it.
      codes are listed by `records/tax_code`),
      `GET …/reference-data/{kind}?provider_ref=…` or `?name=…` looks up one
      by its exact id or name, and `PUT …/mappings/{kind}/{erp_code}` maps an
-     ERP code to it.
+     ERP code to it. A QuickBooks `income_account` can be an Income or an
+     Other Income account; a Xero one can be any revenue-class account.
 5. Check `GET …/settings`: a write dated before `sync_start_date` is refused
    with `accounting.before_sync_start`, and a write of a disabled record type
    with `accounting.record_type_disabled`.

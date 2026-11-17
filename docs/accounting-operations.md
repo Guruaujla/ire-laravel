@@ -208,6 +208,10 @@ remainder); the parts always add up to Xero's stored tax. `tax_lines` is
 left out when a provider rate is no longer mapped to an ERP tax code. The
 field is additive: results stored before it existed do not have it.
 
+An invoice update result also carries `due_date` (YYYY-MM-DD): the due date
+the provider stored, from the verified read-back, so you can confirm what was
+saved. It is absent on results stored before it was added.
+
 ### Updating a paid invoice
 
 - **QuickBooks:** an invoice with payments can be updated when every

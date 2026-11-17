@@ -90,11 +90,11 @@ document before anything else.
 | `accounting.invoice.create` | ERP invoice id | `invoice` {number?, issue_date, due_date?, currency, customer.erp_id, lines}, `expected_totals` |
 | `accounting.invoice.update` | ERP invoice id | `change_id`, the full new `invoice` (same customer, issue date, items, tax codes and line ids), `expected_totals`, `before` {expected_revision, totals} |
 | `accounting.invoice.void` | ERP invoice id | `void_id`, `invoice` {issue_date, currency, customer, expected_revision, before_totals} |
-| `accounting.payment.create` | ERP payment id | `payment` {date, amount, currency, customer, payment_method, deposit_account, reference?}, `invoice` {erp_id, expected_revision, expected_balance} |
+| `accounting.payment.create` | ERP payment id | `payment` {date, amount, currency, customer, payment_method?, deposit_account?, reference?}, `invoice` {erp_id, expected_revision, expected_balance} (see [Payment method and deposit account](#payment-method-and-deposit-account)) |
 | `accounting.payment.void` | ERP payment id | `void_id`, `payment.expected_revision` |
 | `accounting.payment.delete` | ERP payment id | `delete_id`, `payment.expected_revision` |
 | `accounting.payment.update` | ERP payment id | `change_id`, `payment.expected_revision`, and any of `payment.amount`, `.date`, `.payment_method`, `.deposit_account`, `.reference` |
-| `accounting.refund.create` | ERP refund id | `refund` {number, date, lines with `original_erp_line_id`, payment_method, refund_account}, `expected_totals`, `original_invoice` {erp_id, before_totals}, `original_payment.erp_id` |
+| `accounting.refund.create` | ERP refund id | `refund` {number, date, lines with `original_erp_line_id`, payment_method?, refund_account}, `expected_totals`, `original_invoice` {erp_id, before_totals}, `original_payment.erp_id` |
 | `accounting.credit_memo.create` | ERP credit memo id | `credit_memo` {number, date, lines with `original_erp_line_id`}, `expected_totals`, `original_invoice` {erp_id, before_totals} |
 | `accounting.credit_memo.apply` | ERP application id | `application` {date, amount, currency, customer}, `credit_memo.erp_id`, `invoice` {erp_id, before_totals} |
 
@@ -162,6 +162,39 @@ one under a new `erp_id`). It ships disabled until QuickBooks qualifies it.
   `unapplied_amount`, and its invoice's `balance` and `revision`. The
   invoice's new balance is also sent as an `accounting.document.status_changed`
   event.
+
+### Payment method and deposit account
+
+`payment.payment_method` and `payment.deposit_account` on
+`accounting.payment.create`, and `refund.payment_method` on
+`accounting.refund.create`, may be left out. `refund.refund_account` is
+always required.
+
+- **QuickBooks.** A ref you leave out is not sent, and QuickBooks applies its
+  own default. A payment then has no payment method, and without
+  `deposit_account` QuickBooks deposits it to its default account, normally
+  Undeposited Funds. Money in Undeposited Funds needs a later Bank Deposit in
+  QuickBooks before it reaches a bank account; the runtime does not make that
+  deposit. The payment is verified with no payment method and with a deposit
+  account present, and its result carries the account QuickBooks chose as
+  `deposit_account_ref_observed`. A refund without `payment_method` has none.
+- Leaving a ref out is a separate case that is enabled for each app on its
+  own. Until it is, a new job fails with `accounting.invalid_input` on its
+  first attempt, and its error message names the ref to send (for example
+  `payment.deposit_account`). Nothing is sent to QuickBooks or kept for that
+  payment or refund. Send it again with the named ref and a new idempotency
+  key. A payment or refund that sends every ref is not affected. A payment
+  across several invoices needs that case too: while it is not enabled for
+  the app, the job fails with `accounting.capability_unsupported` instead;
+  once it is, only the left-out ref is refused, as above. Sending the named ref clears this refusal, but the job can still be
+  refused for another expanded case, for example a refund with mixed funding,
+  which is decided only after the runtime reads the payment from QuickBooks.
+- The case is checked once, before the first attempt. A job that was admitted
+  keeps that admission: if the case is withdrawn later, its retries and
+  recovery still send the same request with the same request id, so a write
+  that may already exist in QuickBooks is finished, not abandoned.
+- **Xero.** `payment_method` is ignored. A payment without `deposit_account`
+  is refused with `400 accounting.invalid_input`.
 
 ## Getting the result
 
@@ -460,7 +493,8 @@ reachable only through this API: `POST /v1/operations/execute` refuses them.
   an unmapped one is refused with `accounting.mapping_missing`. Tax rates with
   a compound component are not supported.
 - **No payment method.** Xero has no payment method mapping kind;
-  `payment_method` is accepted and ignored.
+  `payment_method` is accepted and ignored. A payment must name its
+  `deposit_account`: without one it is `400 accounting.invalid_input`.
 - **Refunds are two writes.** A refund is a credit note for the refunded lines,
   then a cash refund of that credit note's whole total from the mapped
   `refund_account`. The credit note is never allocated to the invoice. When the
@@ -510,7 +544,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count). On QuickBooks a customer's name must also be unused by any vendor or employee (letter case ignored); the title names the record type and id. Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known (for a name, only a customer or item you could bind). | Renumber in the ERP and send with a new key; for a name, rename the record in the ERP, or bind the existing customer or item instead of creating. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
 | `accounting.period_closed` (409) | Dated on or before the provider's closing date. | Re-date it, or reopen the period in the provider, then send with a new key. A Xero refund whose credit note is already written ends `accounting.refund_incomplete` instead: reopen the period, then resume it with its frozen date. | `review_and_resubmit` |
 | `accounting.before_sync_start` (409) | Dated before the connection's `sync_start_date`. | Keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
-| `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only). | Read `GET /v1/accounting/providers` capabilities before offering the action. | `do_not_sync` |
+| `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. No write was sent. | Read `GET /v1/accounting/providers` capabilities before offering the action. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Check your app's **Operations** section in the developer Console; if it says Off for everyone, contact support. Do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
 | `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (Xero) a resume of a refund whose job is still running, is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
@@ -534,7 +568,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.mapping_not_found` (404) | No mapping for this kind and ERP code. | Create it with `PUT …/mappings/{kind}/{erp_code}`. | `fix_request` |
 | `accounting.connection_not_found` (404) | The connection id is not this tenant's accounting connection. | Read it from `GET /v1/accounting/providers`. | `fix_request` |
 | `accounting.operation_not_found` (404) | Unknown `job_id` for this tenant. | Use the `job_id` from the `202`. | `fix_request` |
-| `accounting.invalid_input` (400) | An unknown or duplicate field or query parameter. | Send only documented neutral fields. | `fix_request` |
+| `accounting.invalid_input` (400) | An unknown or duplicate field or query parameter. For QuickBooks, also a payment that leaves out `payment_method` or `deposit_account`, or a refund that leaves out `payment_method` (its only optional ref), before leaving it out is enabled for the app; the job fails on its first attempt, its message names the field, and no write was sent. | Send only documented neutral fields. For a left-out ref, send the named field under a new idempotency key; the job can still be refused for another expanded case, such as a refund with mixed funding, which is decided after QuickBooks reads. | `fix_request` |
 | `accounting.provider_refused` (native status) | Native admission refused it for a reason with no neutral code; `provider_detail` has the native code. | Read `provider_detail`; fix the request or escalate. | by HTTP status |
 
 The enum is open: handle unknown codes as "stop and show to a person"

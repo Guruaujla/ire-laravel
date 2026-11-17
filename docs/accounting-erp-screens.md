@@ -317,7 +317,13 @@ method), show a dropdown of provider records:
   `not_applicable`.
 
 Save with `setMapping($tenantId, $connectionId, $kind, $erpCode,
-$providerRef, $treatment)`. Show the mapping `state` beside each code:
+$providerRef, $treatment)`. Show the mapping `state` beside each code.
+`getMapping($tenantId, $connectionId, $kind, $erpCode)` checks a payment
+method or account mapping against the provider each time (one provider read),
+so an account archived or changed in the provider shows `inactive` or
+`drifted` here before a write fails on it. When the provider cannot be read
+(rate limit, outage) it returns the stored state; read it again later rather
+than in a loop.
 
 | `state` | Show |
 | --- | --- |

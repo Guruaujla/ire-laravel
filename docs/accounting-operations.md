@@ -49,6 +49,20 @@ release gate returns `403 accounting.operation_disabled`; do not loop on it.
 
 `…` is `/v1/accounting/connections/{connection_id}`. A missing mapping is
 refused with `409 accounting.mapping_missing`, naming the kind and code.
+`GET …/mappings/{kind}/{erp_code}` checks a code mapping (payment method,
+deposit, refund or income account) against the provider on every read and
+reports `state` `inactive` (archived or inactive there) or `drifted` (gone, or
+no longer usable for the kind, such as an account whose type changed). When
+the provider cannot be read (rate limit, outage) it reports the stored state.
+
+Customer and item upserts are checked against the provider before they are
+accepted, so a clash is refused at submit rather than as a failed job.
+QuickBooks: a customer create whose name a customer, vendor or employee
+already uses (letter case ignored), or an item create whose name an item
+uses, is `409 accounting.document_exists`; an item update whose `type`
+differs from the QuickBooks item is `409 accounting.unsupported_change`. When
+QuickBooks cannot be read at submit, the job runs the same checks, and a
+QuickBooks duplicate-name refusal answers `accounting.document_exists` too.
 
 ## The envelope
 
@@ -71,7 +85,7 @@ document before anything else.
 | Operation | `erp_id` | Payload |
 | --- | --- | --- |
 | `accounting.customer.upsert` | ERP customer id | `customer` {name, email?, currency, phone?, first_name?, last_name?, company_name? (QuickBooks only), billing_address?, shipping_address?}; an address is {line1, line2?, city?, region?, postal_code?, country?} and replaces the stored one (omitted parts are cleared); phone, names and addresses are written but not read back |
-| `accounting.item.upsert` | ERP item id | `item` {name, type `service` or `non_inventory`, income_account (ERP code), unit_price, description?, sku? (QuickBooks only)}; an update keeps the item's QuickBooks type; a different type (or an Inventory item) fails the job with `accounting.unsupported_change` |
+| `accounting.item.upsert` | ERP item id | `item` {name, type `service` or `non_inventory`, income_account (ERP code), unit_price, description?, sku? (QuickBooks only)}; an update keeps the item's QuickBooks type; a different type (or an Inventory item) is refused with `409 accounting.unsupported_change` |
 | `accounting.invoice.create` | ERP invoice id | `invoice` {number?, issue_date, due_date?, currency, customer.erp_id, lines}, `expected_totals` |
 | `accounting.invoice.update` | ERP invoice id | `change_id`, the full new `invoice` (same customer, issue date, items, tax codes and line ids), `expected_totals`, `before` {expected_revision, totals} |
 | `accounting.invoice.void` | ERP invoice id | `void_id`, `invoice` {issue_date, currency, customer, expected_revision, before_totals} |
@@ -454,7 +468,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 
 | Code (HTTP) | Meaning | Do | `decision()` |
 | --- | --- | --- | --- |
-| `accounting.mapping_missing` (409) | An ERP customer, item or code has no usable mapping. `mapping_kind`, `mapping_erp_code` and `mapping_state` say what to map. | Map it, then resend the same request. | `fix_setup` |
+| `accounting.mapping_missing` (409) | An ERP customer, item or code has no usable mapping. `mapping_kind`, `mapping_erp_code` and `mapping_state` say what to map; `mapping_state` `inactive` or `drifted` means the mapped provider record was archived, deleted or is no longer usable for the kind. | Map it, then resend the same request. | `fix_setup` |
 | `accounting.record_type_disabled` (409) | The connection's settings exclude this record type. | Turn it on with `PUT …/settings` if it should sync, then resend the same request. | `fix_setup` |
 | `accounting.document_unlinked` (409) | The referenced invoice (or the payment a refund returns) has no verified provider document on this connection. | Create it through the runtime, or link one created through `quickbooks()`, then resend. | `fix_setup` |
 | `accounting.document_deleted` (410) | The provider no longer has the document this connection wrote (it was deleted there). Returned by the online-link and PDF reads. | Treat the document as gone in the provider; do not retry. | `do_not_sync` |
@@ -464,7 +478,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.invoice_has_payment` (409) | A void of an invoice that has a payment or credit applied. The provider voids only invoices with nothing applied; nothing was sent. QuickBooks returns it as the job's error, Xero on the submit. | Remove or unapply the payment in the provider, then resend the void with a new key; or credit the invoice instead. | `review_and_resubmit` |
 | `accounting.amount_exceeded` (409) | A refund over what was paid, or a returned or credited line over what remains. | Refresh the invoice and reduce the amount; new key. | `review_and_resubmit` |
 | `accounting.tax_mismatch` (409) | The ERP's tax does not match the mapped tax codes or the provider's verification. | Recompute tax from the mapped codes or send per-rate `tax_lines`; new key. | `review_and_resubmit` |
-| `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count). Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known. | Renumber in the ERP and send with a new key. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
+| `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count). On QuickBooks a customer's name must also be unused by any vendor or employee (letter case ignored); the title names the record type and id. Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known (for a name, only a customer or item you could bind). | Renumber in the ERP and send with a new key; for a name, rename the record in the ERP, or bind the existing customer or item instead of creating. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
 | `accounting.period_closed` (409) | Dated on or before the provider's closing date. | Re-date it, or reopen the period in the provider, then send with a new key. A Xero refund whose credit note is already written ends `accounting.refund_incomplete` instead: reopen the period, then resume it with its frozen date. | `review_and_resubmit` |
 | `accounting.before_sync_start` (409) | Dated before the connection's `sync_start_date`. | Keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
 | `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only). | Read `GET /v1/accounting/providers` capabilities before offering the action. | `do_not_sync` |
@@ -487,7 +501,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.settings_conflict` (409) | The settings changed since your `expected_revision`. | `GET` the settings again, reapply the change and resend with the new revision. | `fix_request` |
 | `accounting.mapping_conflict` (409) | The provider record is bound to another ERP id, or the record is ambiguous or changed during verification. Binding an ERP id that is already bound to a different record re-binds it on every provider. | Read `reason` (same values on every provider): `bound_to_other_record` (`bound_erp_id` holds the record: unmap or rebind that ERP id, or choose another record), `record_already_bound` (no longer returned by a bind: keep `bound_provider_ref`), `not_usable_for_kind` or `ambiguous` (choose another record). | `fix_request` |
 | `accounting.reference_invalid` (409), `accounting.reference_not_found` (404) | The provider record is unusable for this kind (`reason`: `inactive` or `not_usable_for_kind`), or does not exist. | Choose an active record of the right type. | `fix_request` |
-| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"), or (job error) a QuickBooks item update whose `type` differs from the provider item. | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first. | `fix_request` |
+| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"), or a QuickBooks item update whose `type` differs from the provider item (on the submit, or as the job's error if the item changed in between). | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first. | `fix_request` |
 | `accounting.mapping_not_found` (404) | No mapping for this kind and ERP code. | Create it with `PUT …/mappings/{kind}/{erp_code}`. | `fix_request` |
 | `accounting.connection_not_found` (404) | The connection id is not this tenant's accounting connection. | Read it from `GET /v1/accounting/providers`. | `fix_request` |
 | `accounting.operation_not_found` (404) | Unknown `job_id` for this tenant. | Use the `job_id` from the `202`. | `fix_request` |

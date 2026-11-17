@@ -4,6 +4,13 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- Docs: `accounting-erp-screens.md` and `accounting-operations.md` document
+  the matching and binding fields (`match_reasons`, `not_matched_reason`,
+  `unsupported_keys`, `unsearchable_keys`, `usable`, `recommended`,
+  QuickBooks tax code rates, `tax_number`/`account_number` match inputs), bind
+  refusal `reason`, QuickBooks re-bind, live mapping `state`, and the
+  QuickBooks name pre-checks at submit. The dropdown example offers only
+  `usable` options.
 - Docs: `accounting-operations.md` documents the Xero payment void and
   delete (both delete the payment in Xero).
 - Docs: `accounting-operations.md` documents `accounting.invoice_has_payment`,

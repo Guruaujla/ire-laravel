@@ -345,7 +345,7 @@ public function options(string $kind, Request $request)
     );
 
     return [
-        'options' => array_values(array_filter($page['items'], fn ($o) => $o['active'])),
+        'options' => array_values(array_filter($page['items'], fn ($o) => $o['usable'] ?? $o['active'])),
         'next_cursor' => $page['next_cursor'],
     ];
 }

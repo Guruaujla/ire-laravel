@@ -87,8 +87,8 @@ document before anything else.
 | --- | --- | --- |
 | `accounting.customer.upsert` | ERP customer id | `customer` {name, email?, currency, phone?, first_name?, last_name?, company_name? (QuickBooks only), billing_address?, shipping_address?}; an address is {line1, line2?, city?, region?, postal_code?, country?} and replaces the stored one (omitted parts are cleared); phone, names and addresses are written but not read back |
 | `accounting.item.upsert` | ERP item id | `item` {name, type `service` or `non_inventory`, income_account (ERP code), unit_price, description?, sku? (QuickBooks only)}; an update keeps the item's QuickBooks type; a different type (or an Inventory item) is refused with `409 accounting.unsupported_change` |
-| `accounting.invoice.create` | ERP invoice id | `invoice` {number?, issue_date, due_date?, currency, customer.erp_id, lines}, `expected_totals` |
-| `accounting.invoice.update` | ERP invoice id | `change_id`, the full new `invoice` (same customer, issue date, items, tax codes and line ids), `expected_totals`, `before` {expected_revision, totals} |
+| `accounting.invoice.create` | ERP invoice id | `invoice` {number?, issue_date, due_date?, currency, customer.erp_id, reference?, lines}, `expected_totals` (see [Invoice reference](#invoice-reference)) |
+| `accounting.invoice.update` | ERP invoice id | `change_id`, the full new `invoice` (same customer, issue date, items, tax codes and line ids; reference?), `expected_totals`, `before` {expected_revision, totals} |
 | `accounting.invoice.void` | ERP invoice id | `void_id`, `invoice` {issue_date, currency, customer, expected_revision, before_totals} |
 | `accounting.invoice.delete` | ERP invoice id | `delete_id`, `invoice` {issue_date, currency, customer, expected_revision, before_totals} (QuickBooks only) |
 | `accounting.payment.create` | ERP payment id | `payment` {date, amount, currency, customer, payment_method?, deposit_account?, reference?}, `invoice` {erp_id, expected_revision, expected_balance} (see [Payment method and deposit account](#payment-method-and-deposit-account)) |
@@ -366,6 +366,30 @@ field is additive: results stored before it existed do not have it.
 An invoice update result also carries `due_date` (YYYY-MM-DD): the due date
 the provider stored, from the verified read-back, so you can confirm what was
 saved. It is absent on results stored before it was added.
+
+An invoice create or update whose request carried `reference` also has
+`reference` in its result: the reference the provider stored, from the
+verified read-back (`""` when an update cleared it).
+
+### Invoice reference
+
+`invoice.reference` is optional text printed on the invoice, such as the
+ERP's invoice title. It is single-line text with no leading or trailing spaces,
+at most 255 characters.
+
+- **Create:** 1 to 255 characters. Leave it out for no reference.
+- **Update:** leave it out to keep the provider's current reference; send `""`
+  to clear it.
+- **Xero:** the invoice's `Reference`. **QuickBooks:** the invoice's
+  `CustomerMemo` (the message displayed on the invoice).
+- The reference is checked on the provider read-back like every other field.
+  A mismatch is the same uncertain outcome as any other mismatch.
+- It is gated per provider by the capability rows `xero.invoice.reference`
+  and `quickbooks.invoice.reference`, which ship disabled. While the row is
+  disabled, a request that carries `reference` is refused `403
+  accounting.operation_disabled` (with `provider_detail`), and nothing is
+  frozen or sent. Send the request without `reference` to write the invoice.
+  A request without `reference` behaves exactly as before.
 
 ### Updating a paid invoice
 

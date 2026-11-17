@@ -249,6 +249,29 @@ saved. It is absent on results stored before it was added.
   `expected_revision` does not hide it. A QuickBooks void of an invoice
   linked to anything other than a payment is `accounting.unsupported_change`.
 
+### Adding and removing invoice lines (Xero)
+
+On Xero, an unpaid AUTHORISED invoice can have lines added, removed or
+re-itemed (a different `item_code` or tax code) through the same
+`accounting.invoice.update`. Send the full new line list: keep the
+`erp_line_id` of every line you keep, give each new line a new `erp_line_id`,
+and leave out the lines to remove. A new or re-itemed line needs an active
+item mapping with a sales account. The update runs as its own operation,
+`xero.invoice.update_lines`, which **ships disabled**: until it is enabled the
+request is refused with `403 accounting.operation_disabled` (an update that
+keeps the same lines is not affected).
+
+- A paid, part-paid or credited invoice is `409 accounting.unsupported_change`
+  (Xero locks its lines).
+- The result carries `lines`: every current line with its `erp_line_id` and
+  new `provider_line_id`. The runtime records that map, so later updates,
+  refunds and credit memos name the current lines.
+- If the invoice's lines changed in Xero since the runtime last recorded them,
+  the update is `409 accounting.document_unlinked` (nothing is sent); fix the
+  invoice in Xero to match, or ask support to reconcile it.
+- If Xero changed the lines between your read and the write, the job ends
+  `xero.revision_conflict`; refresh and resend with a new key.
+
 Other reads:
 
 - `GET …/documents/{invoice|payment}/{erp_id}?tenant_id=…` re-reads the
@@ -294,7 +317,8 @@ Other reads:
 `PUT …/documents/invoice/{erp_id}/link` records the ERP line ids of an invoice
 the runtime created through the native API, so update, refund and credit memo
 can name its lines. Send every line, either with the `provider_line_id` from the
-old result or exactly as it was created. Invoices created outside the runtime
+old result or exactly as it was created. After a Xero lines change, send the
+current lines, each with its `provider_line_id`. Invoices created outside the runtime
 are `accounting.document_unlinked`. See
 [accounting-migration.md](accounting-migration.md#moving-from-quickbooks-to-accounting).
 

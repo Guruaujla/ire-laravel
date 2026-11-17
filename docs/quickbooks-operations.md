@@ -129,9 +129,11 @@ refetch the token and void automatically.
 ### Invoice delete
 
 `invoice_delete` has the same shape as `invoice_void` ({`Id`, `SyncToken`},
-plus `original_invoice`) and the same rules. The result is the Invoice with
-`status: deleted`; it is proven only by QuickBooks' deleted answer for the
-same `Id`, or its change log, never by the Invoice no longer being found.
+plus `original_invoice`) and the same rules. Seeded disabled. The result is
+the Invoice with `status: deleted`; it is proven only by QuickBooks' deleted
+answer for the same `Id`, or its change log, never by the Invoice no longer
+being found. A Payment applied to the Invoice stays, unapplied. A closed
+period (fault 6200) is `quickbooks.period_closed`.
 
 ### Payment
 
@@ -150,7 +152,9 @@ void or delete, never starting with `provider:`. The Payment must be applied to
 one Invoice or to none, dated after the closing date, and have no refund
 written through the runtime. A stale SyncToken is a conflict: re-read and ask
 the user. A deleted Payment cannot be voided, and a voided Payment is not
-deleted.
+deleted. QuickBooks refuses a Payment in a bank deposit (fault 6540: remove it
+from the deposit in QuickBooks first) and a Payment in a closed period
+(fault 6200, `quickbooks.period_closed`).
 
 ### Payment update
 
@@ -164,7 +168,15 @@ freezes the resulting fields, claims the payment and only then sends one sparse
 update with the frozen SyncToken. The applied amount is the smaller of the new
 total and the Invoice's open balance plus what the Payment already applies;
 the rest stays unapplied. Both the current and the new date must be after the
-closing date. The same refusals as for a void apply.
+closing date. The same refusals as for a void apply. A lower total lowers the
+application in the same update. If QuickBooks still refuses the total against
+the Payment's charges (fault 6000), the job fails and nothing changes.
+
+These reversal operations are available for an app only once each one is
+qualified and enabled for it; until then they are refused at the release gate.
+The neutral guide's
+[decision table](accounting-operations.md#reversing-payments-and-invoices)
+shows what each provider allows.
 
 ### Refund
 

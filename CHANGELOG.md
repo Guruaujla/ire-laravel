@@ -2,8 +2,20 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
-## Unreleased
+## 1.9.0
 
+- No package code changes. Use with `ezee/integration-runtime-sdk` 1.9.0 for
+  `IntegrationRuntime::accounting()->voidPayment()`, `deletePayment()`,
+  `updatePayment()` and `deleteInvoice()`.
+- Docs: `accounting-operations.md` has a new "Reversing payments and
+  invoices" section: a table of what QuickBooks and Xero each allow for the
+  four reversal operations, the provider refusals and their error codes
+  (deposited, reconciled or batch payment, closed period, a payment named by
+  a refund), how a second reversal of a reversed payment is answered, that a
+  lower payment amount lowers its application, and the rules (an
+  `erp_id` is never reused after a delete; a payment named by a runtime
+  refund cannot be reversed). The errors table covers these cases.
+  `quickbooks-operations.md` notes the native QuickBooks faults.
 - Docs: `accounting-erp-screens.md` and `accounting-operations.md` document
   the matching and binding fields (`match_reasons`, `not_matched_reason`,
   `unsupported_keys`, `unsearchable_keys`, `usable`, `recommended`,

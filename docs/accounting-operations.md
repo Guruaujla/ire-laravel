@@ -115,12 +115,83 @@ Rules that apply to all of them:
   before it is `409 accounting.period_closed`.
 - QuickBooks and Xero: CAD home currency only; unmapped tax codes are refused.
 
+### Reversing payments and invoices
+
+Four operations reverse or change a document written through this API:
+`accounting.payment.void`, `accounting.payment.delete`,
+`accounting.payment.update` and `accounting.invoice.delete`. Each one ships
+disabled. It becomes available for your app only once it is qualified and
+then enabled for the app; until then it answers
+`403 accounting.operation_disabled`. `GET /v1/accounting/providers` lists the
+operations each provider supports, which is not the same as enabled: check
+your app's **Operations** section in the developer Console before you offer
+one of them in the ERP.
+
+What each provider does with each operation:
+
+| Operation | QuickBooks | Xero |
+| --- | --- | --- |
+| `accounting.payment.void` | Allowed (`quickbooks.payment.void`). The payment stays in QuickBooks with `total_amount` `0.00`; the result `status` is `voided`. | Allowed, as a delete (`xero.payment.delete`). Xero has no void: the payment is set `DELETED` and the result `status` is `deleted`. |
+| `accounting.payment.delete` | Allowed (`quickbooks.payment.delete`). The result `status` is `deleted`. | Allowed (`xero.payment.delete`). The result `status` is `deleted`. |
+| `accounting.payment.update` | Allowed (`quickbooks.payment.update`). | Refused: `422 accounting.capability_unsupported`. Xero has no payment update: delete the payment, then create a new one under a new `erp_id`. |
+| `accounting.invoice.delete` | Allowed (`quickbooks.invoice.delete`). The result `status` is `deleted`. | Refused: `422 accounting.capability_unsupported`. Xero deletes only draft invoices: void the invoice instead (`accounting.invoice.void`). |
+
+"Allowed" means the runtime translates the operation to that native write.
+The provider can still refuse a particular document. Such a refusal writes
+nothing, and the job's `error.code` is one of these:
+
+| Case | QuickBooks | Xero | Do |
+| --- | --- | --- | --- |
+| The payment is in a bank deposit | `409 accounting.unsupported_change` (QuickBooks fault 6540, "Deposited Transaction cannot be changed") | Not applicable | Remove the payment from the deposit in QuickBooks first, then send a new reversal id with a new key. |
+| The payment is reconciled | Not applicable | `409 accounting.unsupported_change` | Unreconcile it in Xero first, then send a new reversal id with a new key. |
+| The payment is part of a batch payment | Not applicable | `409 accounting.unsupported_change` ("Payments within a batch cannot be deleted") | Remove it from the batch in Xero first, then send a new reversal id with a new key. |
+| The document is dated on or before the closing date | `409 accounting.period_closed` (also QuickBooks fault 6200, "Account Period Closed") | `409 accounting.period_closed` (the lock date) | Reopen the period in the provider, then send a new reversal id with a new key. |
+| QuickBooks still refuses an updated amount against the payment's charges | `409 accounting.unsupported_change` (QuickBooks fault 6000, "can't be less than the selected charges") | Not applicable (no update) | Nothing changed. Refresh the payment in QuickBooks and review it with a person before sending a new `change_id`. A lowered amount normally lowers the invoice application with it, so this is not expected. |
+| A refund written through this API names the payment | `409 accounting.unsupported_change` | `409 accounting.unsupported_change` | The payment cannot be voided, deleted or updated. Keep it. |
+
+The date checked is the payment's own date, or the invoice's date for an
+invoice delete. A payment update that changes `date` checks both the current
+and the new date.
+
+Rules that hold on both providers:
+
+- **An `erp_id` is never reused after a delete.** A create under the
+  `erp_id` of a deleted invoice or payment is
+  `409 accounting.document_exists` (for a QuickBooks invoice, also while its
+  delete is in flight). Create the new document under a new `erp_id`.
+- **A payment named by a runtime refund cannot be reversed.** A void, delete
+  or update of a payment that a refund written through this API returns is
+  `409 accounting.unsupported_change`. Credit memos do not count: they belong
+  to the invoice, not to the payment.
+- **One reversal at a time.** While a void, delete or update of a payment is
+  in flight, another one of the same payment is
+  `409 accounting.operation_in_progress`.
+- **A second reversal of a reversed payment.** Repeating the same kind (a
+  void of a voided payment, a delete of a deleted one) completes with
+  `voided` or `deleted` and writes nothing: on QuickBooks when the runtime has
+  recorded that state, on Xero whenever Xero shows the payment deleted (on
+  Xero a void and a delete are the same delete). On QuickBooks a delete of a
+  voided payment is `409 accounting.unsupported_change`. A void of a deleted
+  payment, or a delete of a payment QuickBooks no longer has whose delete the
+  runtime has not recorded, is `409 accounting.revision_conflict`: refresh the
+  payment.
+- **QuickBooks leaves the payment unapplied.** When QuickBooks voids or deletes
+  an invoice that has a payment, the payment stays as customer credit with no
+  linked invoice. Its new state arrives as an
+  `accounting.document.status_changed` event, and it can still be voided or
+  deleted. Xero refuses to void such an invoice
+  (`409 accounting.invoice_has_payment`): delete the payment first.
+- **A reversal made in the provider is recorded too.** A payment voided or
+  deleted in the provider's own screens is recorded and sent as an
+  `accounting.document.status_changed` event.
+
 ### Deleting an invoice
 
 `accounting.invoice.delete` deletes an invoice written through this API.
 QuickBooks only; Xero deletes only draft invoices and answers
 `422 accounting.capability_unsupported` (void the invoice instead). It ships
-disabled until QuickBooks qualifies it.
+disabled and is available for an app only once qualified and enabled (see
+[Reversing payments and invoices](#reversing-payments-and-invoices)).
 
 - `delete_id` is your stable id for this delete; retries reuse it. The
   `invoice` before-state is the same as a void's.
@@ -153,17 +224,28 @@ disabled until QuickBooks qualifies it.
 `accounting.payment.void` and `accounting.payment.delete` reverse a payment
 written through this API (its `erp_id` is the payment's). On QuickBooks they
 are a void and a delete. Xero has no void, so on Xero both delete the payment
-(see [Xero](#xero) below). Both ship disabled until each provider
-qualifies them.
+(see [Xero](#xero) below). Both ship disabled and are available for an app
+only once qualified and enabled for each provider (see
+[Reversing payments and invoices](#reversing-payments-and-invoices)).
 
 - `void_id` / `delete_id` is your stable id for this reversal; retries reuse
   it. `payment.expected_revision` is the payment's last `revision`.
 - The payment must be applied to one invoice or to none. A payment over
-  several invoices, a credit application, a payment with a refund written
-  through this API, and a payment dated on or before the closing date are
-  refused (`409`). A second void or delete of the same payment is refused
-  while the first is in flight or after it succeeded; a deleted payment
-  cannot be voided, and a voided payment is not deleted.
+  several invoices, a credit application, and a payment with a refund written
+  through this API are `409 accounting.unsupported_change`; a payment dated on
+  or before the closing date is `409 accounting.period_closed`. A second void
+  or delete of the same payment is refused while the first is in flight
+  (`409 accounting.operation_in_progress`). After one succeeded, the same kind
+  again completes with no write, and on QuickBooks a delete of a voided
+  payment is `409 accounting.unsupported_change` (see
+  [Reversing payments and invoices](#reversing-payments-and-invoices)).
+- The provider can refuse it too: a QuickBooks payment in a bank deposit
+  (fault 6540) and a Xero payment that is reconciled or part of a batch
+  payment are `409 accounting.unsupported_change`. Remove it from the deposit,
+  unreconcile it, or remove it from the batch in the provider first, then send
+  a new `void_id` or `delete_id` with a new key.
+- A deleted payment's `erp_id` is never reused: a create under it is
+  `409 accounting.document_exists`.
 - The result is the payment with `status` `voided` (its `total_amount` is
   `0.00`) or `deleted`, and the payment's new `revision`. A deleted Xero
   payment has no revision: its `revision` is the literal `deleted`.
@@ -175,7 +257,9 @@ qualifies them.
 `accounting.payment.update` changes a payment written through this API.
 QuickBooks only; Xero has no payment update and answers
 `422 accounting.capability_unsupported` (delete the payment and create a new
-one under a new `erp_id`). It ships disabled until QuickBooks qualifies it.
+one under a new `erp_id`). It ships disabled and is available for an app
+only once qualified and enabled (see
+[Reversing payments and invoices](#reversing-payments-and-invoices)).
 
 - `change_id` is your stable id for this change; retries reuse it.
   `payment.expected_revision` is the payment's last `revision`. Send at least
@@ -183,9 +267,13 @@ one under a new `erp_id`). It ships disabled until QuickBooks qualifies it.
   `reference`; anything you leave out stays as it is.
 - A new `amount` is applied to the payment's invoice up to that invoice's
   open balance plus what this payment already applies, and the rest stays
-  unapplied as customer credit. There is no cap. A payment applied to no
+  unapplied as customer credit. There is no cap. Lowering the amount lowers
+  the invoice application with it in the same write. A payment applied to no
   invoice changes only its total. An update never moves a payment to another
   invoice.
+- If QuickBooks still refuses the amount against the payment's charges
+  (fault 6000), the job fails with `accounting.unsupported_change` and nothing
+  changes.
 - When `date` changes, both the current and the new date must be after the
   closing date.
 - The same targets are refused as for a void (`409`): several invoices, a
@@ -596,13 +684,13 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.invoice_has_payment` (409) | A Xero void of an invoice that has a payment or credit applied. Xero voids only invoices with nothing applied; nothing was sent. QuickBooks voids and deletes such an invoice and leaves the payment unapplied. | Remove the payment in Xero, then resend the void with a new key; or credit the invoice instead. | `review_and_resubmit` |
 | `accounting.amount_exceeded` (409) | A refund over what was paid, or a returned or credited line over what remains. | Refresh the invoice and reduce the amount; new key. | `review_and_resubmit` |
 | `accounting.tax_mismatch` (409) | The ERP's tax does not match the mapped tax codes or the provider's verification. | Recompute tax from the mapped codes or send per-rate `tax_lines`; new key. | `review_and_resubmit` |
-| `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count). On QuickBooks a customer's name must also be unused by any vendor or employee (letter case ignored); the title names the record type and id. Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known (for a name, only a customer or item you could bind). | Renumber in the ERP and send with a new key; for a name, rename the record in the ERP, or bind the existing customer or item instead of creating. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
-| `accounting.period_closed` (409) | Dated on or before the provider's closing date. | Re-date it, or reopen the period in the provider, then send with a new key. A Xero refund whose credit note is already written ends `accounting.refund_incomplete` instead: reopen the period, then resume it with its frozen date. | `review_and_resubmit` |
+| `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count), or a create names the `erp_id` of an invoice or payment that was deleted (an `erp_id` is never reused). On QuickBooks a customer's name must also be unused by any vendor or employee (letter case ignored); the title names the record type and id. Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known (for a name, only a customer or item you could bind). | Renumber in the ERP and send with a new key; for a name, rename the record in the ERP, or bind the existing customer or item instead of creating. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
+| `accounting.period_closed` (409) | Dated on or before the provider's closing date. A payment reversal checks the payment's own date, an invoice delete the invoice's date, and a payment update that changes `date` both dates; the provider's own closed-period refusal (QuickBooks fault 6200, the Xero lock date) answers this too. | Re-date it, or reopen the period in the provider, then send with a new key (a reversal cannot be re-dated: reopen the period, then send a new reversal id). A Xero refund whose credit note is already written ends `accounting.refund_incomplete` instead: reopen the period, then resume it with its frozen date. | `review_and_resubmit` |
 | `accounting.before_sync_start` (409) | Dated before the connection's `sync_start_date`. | Keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
-| `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. No write was sent. | Read `GET /v1/accounting/providers` capabilities before offering the action. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
+| `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. Xero answers it for `accounting.payment.update` (delete the payment, then create a new one under a new `erp_id`) and `accounting.invoice.delete` (void instead). No write was sent. | Read `GET /v1/accounting/providers` capabilities before offering the action. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Check your app's **Operations** section in the developer Console; if it says Off for everyone, contact support. Do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
-| `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (QuickBooks) a void or delete of this invoice or another adjustment of it, or (Xero) a resume of a refund whose job is still running, is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
+| `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (QuickBooks) a void or delete of this invoice or another adjustment of it, or (Xero) a resume of a refund whose job is still running, or a void, delete or update of this payment (for a refund: of the payment it returns), is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
 | `accounting.write_uncertain` (409, job error) | A customer, item or (Xero) invoice, payment, credit memo, credit application or refund credit note write may have reached the provider but was not confirmed, or the invoice the provider holds differs from what was sent. The runtime never re-sends it. A customer or item ERP id answers `accounting.operation_in_progress` until an operator reconciles it; an invoice stays with its reservation for the operator. | Do not resend, and do not resend the invoice under a new key. Check the document in the provider and ask the operator to reconcile. | `stop_and_reconcile` |
 | `accounting.refund_incomplete` (409, job error) | A Xero refund is two writes: a credit note, then its cash refund. The credit note was written and verified; the cash refund was proved not written. `candidate_provider_id` names the open credit note, and the refund keeps its budget against the invoice and payment. | When the cash refund was refused before it was sent (no step-2 row, or one with no provider-call clock; the message says `was not written`): fix the cause in Xero, then resume with the same `erp_id`, a new key and the same credit-note part (`refund_account` and `reference` may change): only the cash refund is sent. A cause of `xero.period_closed` (a lock date moved after the credit note) keeps the refund's frozen `date`: reopen the period in Xero, then resume. When Xero refused the cash refund after it was sent (the message says `was refused by Xero`), it is never re-sent for that `erp_id` and a resume sends nothing: ask the operator. Or ask the operator to reconcile it. Never resubmit the refund under a new `erp_id`. A refund credit note that did not verify answers `accounting.write_uncertain` instead, and is resumed only after the operator reconciles it. | `stop_and_reconcile` |
 | `accounting.link_conflict` (409) | The invoice is linked with a different line map, or its provider invoice is linked to another ERP id. | Send the recorded line map, or ask support to correct it. | `stop_and_reconcile` |
@@ -619,7 +707,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.settings_conflict` (409) | The settings changed since your `expected_revision`. | `GET` the settings again, reapply the change and resend with the new revision. | `fix_request` |
 | `accounting.mapping_conflict` (409) | The provider record is bound to another ERP id, or the record is ambiguous or changed during verification. Binding an ERP id that is already bound to a different record re-binds it on every provider. | Read `reason` (same values on every provider): `bound_to_other_record` (`bound_erp_id` holds the record: unmap or rebind that ERP id, or choose another record), `record_already_bound` (no longer returned by a bind: keep `bound_provider_ref`), `not_usable_for_kind` or `ambiguous` (choose another record). | `fix_request` |
 | `accounting.reference_invalid` (409), `accounting.reference_not_found` (404) | The provider record is unusable for this kind (`reason`: `inactive` or `not_usable_for_kind`), or does not exist. | Choose an active record of the right type. | `fix_request` |
-| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"), or a QuickBooks item update whose `type` differs from the provider item (on the submit, or as the job's error if the item changed in between), or a QuickBooks payment void, delete or update of a payment in a bank deposit (the job's error). | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first; for a deposited payment, remove it from the deposit in QuickBooks first, then resend with a new key. | `fix_request` |
+| `accounting.unsupported_change` (409) | The change is not supported, e.g. deleting a company-bound customer or item mapping, or an update of a paid invoice the provider does not allow (see "Updating a paid invoice"), or a QuickBooks item update whose `type` differs from the provider item (on the submit, or as the job's error if the item changed in between), or a payment void, delete or update the runtime or the provider does not allow (the job's error): a payment over several invoices, a credit application, a payment named by a refund written through this API, a QuickBooks delete of a voided payment, a QuickBooks payment in a bank deposit (fault 6540), a QuickBooks payment update whose amount QuickBooks still refuses against the payment's charges (fault 6000), or a Xero payment that is reconciled or part of a batch payment; or a QuickBooks invoice void or delete after the other one succeeded. See [Reversing payments and invoices](#reversing-payments-and-invoices). | Rebind to the correct provider record instead; for a paid invoice, change only what the provider allows, or remove the payment in the provider first; for a deposited payment, remove it from the deposit in QuickBooks first (for a reconciled or batch Xero payment, unreconcile it or remove it from the batch in Xero first), then resend with a new reversal id and a new key. A payment named by a runtime refund cannot be reversed. | `fix_request` |
 | `accounting.mapping_not_found` (404) | No mapping for this kind and ERP code. | Create it with `PUT …/mappings/{kind}/{erp_code}`. | `fix_request` |
 | `accounting.connection_not_found` (404) | The connection id is not this tenant's accounting connection. | Read it from `GET /v1/accounting/providers`. | `fix_request` |
 | `accounting.operation_not_found` (404) | Unknown `job_id` for this tenant. | Use the `job_id` from the `202`. | `fix_request` |

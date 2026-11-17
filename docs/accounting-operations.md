@@ -282,7 +282,7 @@ saved. It is absent on results stored before it was added.
   `expected_revision` does not hide it. A QuickBooks void of an invoice
   linked to anything other than a payment is `accounting.unsupported_change`.
 
-### Adding and removing invoice lines (Xero)
+### Adding and removing invoice lines
 
 On Xero, an unpaid AUTHORISED invoice can have lines added, removed or
 re-itemed (a different `item_code` or tax code) through the same
@@ -304,6 +304,23 @@ keeps the same lines is not affected).
   invoice in Xero to match, or ask support to reconcile it.
 - If Xero changed the lines between your read and the write, the job ends
   `xero.revision_conflict`; refresh and resend with a new key.
+
+On QuickBooks the same request works on an unpaid invoice (no payment or
+other transaction linked, and the balance equals the total). It runs as
+`quickbooks.invoice.update_lines`, which also **ships disabled** (`403
+accounting.operation_disabled` until enabled). The runtime recomputes the
+invoice's tax lines from the QuickBooks tax codes of the new line set and
+refuses the write if they differ from your `after.totals`.
+
+- An invoice with a payment or other link is `409
+  accounting.unsupported_change`. If one is added after admission, the job
+  ends `quickbooks.invoice_lines_update_not_unpaid`; nothing is sent.
+- If the invoice's lines changed in QuickBooks since your read, the job ends
+  `quickbooks.invoice_update_source_mismatch` or
+  `quickbooks.invoice_update_stale_revision`; refresh and resend with a new
+  key.
+- The result carries `lines` with the new `provider_line_id`s, and the
+  runtime re-records the line map, as for Xero.
 
 Other reads:
 

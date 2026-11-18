@@ -28,11 +28,14 @@ service-key material on any screen.
 
 ## Rules every screen follows
 
-- **Read the provider's capabilities, do not hard-code them.**
-  `providers($tenantId)` returns each provider's `capabilities` (`operations`,
-  `currencies`, `limits`) and `mapping_kinds`. Offer an action only when its
-  operation is listed, and show `limits` as text. For QuickBooks today that
-  means CAD only, and unmapped tax codes are refused.
+- **Read the connection's capabilities, do not hard-code them.**
+  `capabilities($tenantId, $connectionId)` lists every operation with
+  `available` and every feature with `supported`, with a `reason` and an
+  `alternative` when not. Offer an action only when
+  `Accounting::supports($caps, $name)` is true; when it is not and
+  `alternative` is set, offer that instead (Xero: void instead of delete).
+  Never branch on the provider name. `providers($tenantId)` still returns each
+  provider's `limits` and `mapping_kinds`; show `limits` as text.
 - **Branch on the code or `decision()`, never on the message.** A call
   refused at once throws `RuntimeProblemException`; switch on
   `$e->decision()`. An unknown `accounting.*` code returns
@@ -359,7 +362,7 @@ you stored when you submitted. Do not call the runtime on every page view.
 
 | Outbox state | Badge | Action |
 | --- | --- | --- |
-| Not submitted | "Not synced" | **Sync** (if the record type is enabled and the operation is in `capabilities`). |
+| Not submitted | "Not synced" | **Sync** (if the record type is enabled and the operation is `available` in the connection's capabilities). |
 | `queued`, `processing` | "Syncing" | None. The poller or webhook updates it. |
 | `completed` | "Synced", plus the provider id (`provider_id`) and `total_amount` | **Refresh from provider**. |
 | Refused or failed | The problem in plain words | See screen 6. |

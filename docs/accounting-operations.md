@@ -47,6 +47,8 @@ release gate returns `403 accounting.operation_disabled`; do not loop on it.
 5. Check `GET …/settings`: a write dated before `sync_start_date` is refused
    with `accounting.before_sync_start`, and a write of a disabled record type
    with `accounting.record_type_disabled`.
+6. Read `GET …/capabilities` (`Accounting::capabilities`) to decide which
+   actions to show. See [Capabilities](#capabilities).
 
 `…` is `/v1/accounting/connections/{connection_id}`. A missing mapping is
 refused with `409 accounting.mapping_missing`, naming the kind and code.
@@ -318,6 +320,61 @@ always required.
 - **Xero.** `payment_method` is ignored. A payment without `deposit_account`
   is refused with `400 accounting.invalid_input`.
 
+## Capabilities
+
+`GET /v1/accounting/connections/{connection_id}/capabilities?tenant_id=…`
+(`Accounting::capabilities`, `Accounting::supports($caps, $name)`) answers for
+this tenant's connection right now, in provider-neutral names. Show or hide an
+action from it; never branch on `provider_key`.
+
+```json
+{ "connection_id": "c1", "provider_key": "xero", "provider_account_id": "…",
+  "operations": [
+    { "operation": "accounting.payment.update", "available": false,
+      "reason": "provider_unsupported", "alternative": "accounting.payment.delete",
+      "detail": "Xero has no payment update: …", "performed_as": null, "side_effects": [] },
+    { "operation": "accounting.payment.void", "available": true, "reason": null,
+      "alternative": null, "detail": null,
+      "performed_as": "accounting.payment.delete", "side_effects": [] } ],
+  "features": [
+    { "feature": "invoice.reference", "supported": true, "reason": null,
+      "alternative": null, "detail": null } ] }
+```
+
+- `operations` lists every neutral operation. `available` is whether it passes
+  admission now: the provider supports it, it is enabled for every tenant, the
+  tenant has not killed or disarmed it, the kill switch is off, and the
+  connection's settings sync its record type.
+- `features` are behaviours: `invoice.reference`, `invoice.update_lines` (add,
+  remove or re-item lines), `invoice.update_amounts_when_paid`,
+  `invoice.lower_below_paid`, `payment.multi_invoice`,
+  `payment.deposit_account_optional`, `payment.payment_method_optional`,
+  `refund.payment_method_optional`. New ones may be added.
+- `reason` when not available: `provider_unsupported` (the provider has no
+  such thing; use `alternative` when set), `not_offered_yet`,
+  `not_enabled_for_app`, `disabled` (off for every tenant),
+  `disabled_for_tenant`, `disabled_for_connection` (the connection's settings
+  turn the record type off, or a per-connection case is not granted),
+  `misconfigured` (ask support; retrying does not help), `unavailable` (could
+  not be read; read again later). Treat an unknown reason as not available.
+- `performed_as`: the operation the provider actually performs, when it
+  differs. Xero has no payment void, so `accounting.payment.void` deletes the
+  payment and the result `status` is `deleted`. No other operation is emulated.
+- `side_effects`: what the operation can do to other documents.
+  `applied_payments_left_unapplied` (QuickBooks invoice void or delete: an
+  applied payment stays, unapplied), `excess_left_unapplied` (QuickBooks
+  payment update), `credit_note_created` (Xero refund: a credit note plus a
+  cash refund).
+
+It is advisory. Every write still runs its own checks (sync start date, closed
+period, mappings, revisions, tax, company currency). Read it again after a
+connect or reconnect, and when a write is refused with
+`accounting.operation_disabled` or `accounting.capability_unsupported`.
+
+Those two refusals carry `reason` (same values) and, when the provider has a
+replacement, `alternative`, as problem extensions on the synchronous `422`/`403`
+and as `error.reason` on a failed operation's status.
+
 ## Getting the result
 
 Poll `GET /v1/accounting/operations/{job_id}?tenant_id=…` (`Accounting::status`),
@@ -332,6 +389,13 @@ or listen for the `sync_job.completed` / `sync_job.dead_lettered` webhooks (same
     "taxable_amount": "100.00", "tax_amount": "13.00" }],
   "lines": [{ "erp_line_id": "L1", "provider_line_id": "1" }], "provider_verified": true }
 ```
+
+A completed `result` also has `side_effects`: the effects the verified write
+had on other documents (`type`, `document_type`, `erp_id`, `provider_id`,
+`amount`), or `[]`. Today: `excess_left_unapplied` on a payment update that
+leaves part of the payment as customer credit, and `credit_note_created` on a
+Xero refund (the credit note is `provider_id`). Effects a result cannot measure
+are listed per operation in [Capabilities](#capabilities).
 
 A failed or dead-lettered status has `error`: `code` (the neutral code to
 branch on), `provider_detail` (the native code) and `message` (a readable
@@ -716,7 +780,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count), or a create names the `erp_id` of an invoice or payment that was deleted (an `erp_id` is never reused). On QuickBooks a customer's name must also be unused by any vendor or employee (letter case ignored); the title names the record type and id. Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known (for a name, only a customer or item you could bind). | Renumber in the ERP and send with a new key; for a name, rename the record in the ERP, or bind the existing customer or item instead of creating. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
 | `accounting.period_closed` (409) | Dated on or before the provider's closing date. A payment reversal checks the payment's own date, an invoice delete the invoice's date, and a payment update that changes `date` both dates; the provider's own closed-period refusal (QuickBooks fault 6200, the Xero lock date) answers this too. | Re-date it, or reopen the period in the provider, then send with a new key (a reversal cannot be re-dated: reopen the period, then send a new reversal id). A Xero refund whose credit note is already written ends `accounting.refund_incomplete` instead: reopen the period, then resume it with its frozen date. | `review_and_resubmit` |
 | `accounting.before_sync_start` (409) | Dated before the connection's `sync_start_date`. | Keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
-| `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. Xero answers it for `accounting.payment.update` (delete the payment, then create a new one under a new `erp_id`) and `accounting.invoice.delete` (void instead). No write was sent. | Read `GET /v1/accounting/providers` capabilities before offering the action. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
+| `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. Xero answers it for `accounting.payment.update` (delete the payment, then create a new one under a new `erp_id`) and `accounting.invoice.delete` (void instead). No write was sent. | Read `GET …/capabilities` before offering the action; the refusal's `reason` and `alternative` say why and what to use instead. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Check your app's **Operations** section in the developer Console; if it says Off for everyone, contact support. Do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
 | `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (QuickBooks) a void or delete of this invoice or another adjustment of it, or (Xero) a resume of a refund whose job is still running, or a void, delete or update of this payment (for a refund: of the payment it returns), is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |

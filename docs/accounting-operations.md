@@ -349,7 +349,9 @@ action from it; never branch on `provider_key`.
   remove or re-item lines), `invoice.update_amounts_when_paid`,
   `invoice.lower_below_paid`, `payment.multi_invoice`,
   `payment.deposit_account_optional`, `payment.payment_method_optional`,
-  `refund.payment_method_optional`. New ones may be added.
+  `refund.payment_method_optional`. New ones may be added. On QuickBooks,
+  `invoice.lower_below_paid` is supported once that case is qualified for
+  your app (see [Updating a paid invoice](#updating-a-paid-invoice)).
 - `reason` when not available: `provider_unsupported` (the provider has no
   such thing; use `alternative` when set), `not_offered_yet`,
   `not_enabled_for_app`, `disabled` (off for every tenant),

@@ -2,6 +2,14 @@
 
 Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
+## Unreleased
+
+- `IntegrationRuntime::activity()` returns the SDK's `Activity` client for the
+  tenant activity log (`GET /v1/activity`). Needs `ezee/integration-runtime-sdk`
+  with `Activity`.
+- Docs: `accounting-erp-screens.md` has a new "Integration activity log"
+  screen.
+
 ## 1.9.0
 
 - No package code changes. Use with `ezee/integration-runtime-sdk` 1.9.0 for

@@ -408,3 +408,69 @@ Never offer a button that mints a new idempotency key for the same business
 event. A new key is only for a corrected resubmit after
 `review_and_resubmit`, or a failed job whose documented code proves nothing
 was written.
+
+## 7. Integration activity log
+
+A timestamped log your customer can read, for example on the accounting
+settings page or under one invoice: "Invoice INV-1 updated in QuickBooks",
+"QuickBooks reports invoice INV-1 is paid", "Payment PAY-7: create failed in
+Xero. The accounting period is closed in Xero.", "QuickBooks needs to be
+reconnected."
+
+Read it from `GET /v1/activity` (`(new Activity($client))->list()` or
+`->each()` in the PHP SDK, `IntegrationRuntime::activity()` in Laravel). Do
+not build it from your own outbox: the runtime also records changes made in
+the provider, which your outbox never sees.
+
+```php
+$activity = new Activity($client);
+foreach ($activity->each($tenantId, ['erp_id' => 'INV-1', 'limit' => 50], maxPages: 2) as $event) {
+    // $event['occurred_at'], $event['summary'], $event['type'], $event['error']
+}
+```
+
+Each event, newest first:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable. Use it to avoid showing an event twice. |
+| `type` | `operation`, `document.changed`, `connection.connected`, `connection.reconnect_required` or `connection.disconnected`. New types may be added: show an unknown type by its `summary`. |
+| `occurred_at` | ISO-8601 UTC. An operation's is when you sent it; see `operation.completed_at` for when it finished. |
+| `summary` | One customer-safe English sentence. It never contains provider text. Show it as is, or write your own from the fields below. |
+| `operation` | For `operation`: `name` (for example `accounting.invoice.update`), `job_id`, `outcome` and `completed_at`. |
+| `document` | `type`, `erp_id` (your id), `provider_id` and, for `document.changed`, the provider `status` (`open`, `partially_paid`, `paid`, `voided`, `deleted`). |
+| `connection` | For `connection.*`: `status`, `previous_status`, `reason`. |
+| `error` | For a failed operation: `code` (the same neutral code `status()` returns), a customer-safe `message`, and `reason` (for `accounting.operation_disabled` and `accounting.capability_unsupported`, the same reason the capabilities read gives; otherwise null). |
+
+`operation.outcome` is `pending`, `succeeded`, `failed`, `resolved` (support
+marked it resolved, which does not by itself prove the write happened) or
+`cancelled`. An operation is one event whose outcome is updated in place, so
+re-read recent pages to show the latest outcome.
+
+Filters: `connection_id`; `erp_id` (that document plus the payments, refunds
+and credit applications that name it as their invoice; connection events are
+left out); `types` (`operation`, `document`, `connection`, comma-separated);
+`since` and `until` in Unix epoch milliseconds (default the last 90 days, at
+most 366 days apart); `limit` up to 100. Follow `next_cursor` with the same
+filters until it is null. A page can hold fewer events than `limit`, even
+none, while `next_cursor` is set.
+
+What it covers and for how long:
+
+- Operations sent through `POST /v1/accounting/operations`. Native
+  `/v1/operations/execute` jobs and record matching are not included. A
+  replay of a failed operation runs as a new job and does not change the
+  original's event.
+- Document changes the provider reported for documents the runtime wrote on
+  that connection. When the `accounting.document.status_changed` webhook was
+  sent for a change, the event has the same id. The feed also keeps changes
+  recorded before a reconnect or disconnect that the webhook no longer sends.
+  After your own write, the provider read-back can add a `document.changed`
+  event too.
+- Connection changes, filtered as the `connection.*` webhooks are (a
+  disconnect of a connection that never connected is left out). These are
+  kept for 90 days; operations and document changes are kept longer.
+- An operation's time is when its request was first received. A request that
+  was refused and then accepted on a later retry keeps that first time, so
+  re-read recent pages rather than relying on the cursor alone to find new
+  events.

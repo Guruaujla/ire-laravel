@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Ezee\IntegrationRuntime\Laravel;
 
 use Ezee\IntegrationRuntime\Accounting;
+use Ezee\IntegrationRuntime\Activity;
 use Ezee\IntegrationRuntime\Client;
 use Ezee\IntegrationRuntime\Connections;
 use Ezee\IntegrationRuntime\Jobs;
@@ -53,6 +54,12 @@ final class IntegrationRuntime
     public function jobs(): Jobs
     {
         return $this->jobs;
+    }
+
+    /** The tenant's integration activity log (`GET /v1/activity`). */
+    public function activity(): Activity
+    {
+        return new Activity($this->client);
     }
 
     public function connections(): Connections

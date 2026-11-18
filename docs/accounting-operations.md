@@ -397,10 +397,9 @@ at most 255 characters.
   invoice-level link is a Payment and the new total is at least the amount
   paid (total minus balance). The payments stay applied and the result's
   `balance` is the new total minus the amount paid; when that balance is
-  `0.00` the result has no `status` (refresh the document to read it). A new
-  total below the amount paid, or a link to anything other than a Payment
-  (a deposit, an estimate, ...), is `409 accounting.unsupported_change`. All
-  other update rules are unchanged.
+  `0.00` the result has no `status` (refresh the document to read it). A link
+  to anything other than a Payment (a deposit, an estimate, ...) is
+  `409 accounting.unsupported_change`. All other update rules are unchanged.
   - A payment written through this API blocks updates of its invoice only
     while it is in flight or its outcome is uncertain. Once the payment is
     completed, or has failed, the invoice can be updated under the rule
@@ -410,6 +409,12 @@ at most 255 characters.
     link. QuickBooks lets such an invoice be edited, so the update is allowed
     and the applied credit counts as paid. A credit memo or refund written
     through this API still blocks updates of its invoice.
+- **QuickBooks, new total below the amount paid:** allowed for an invoice
+  with exactly one payment, once it is qualified for your app (otherwise
+  `409 accounting.unsupported_change`). The payment stays applied, but only
+  up to the new total, so the result's `balance` is `0.00`. The excess stays on the payment as unapplied credit
+  for the customer. QuickBooks may apply that credit automatically to the
+  same customer's other open invoices; the runtime never moves or refunds it.
 - **Xero:** Xero locks amounts on a paid, part-paid or credited invoice. Such
   an invoice takes only a `due_date` change and line `description` changes:
   send the same lines, quantities, prices, tax codes and `expected_totals` as

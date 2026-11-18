@@ -103,9 +103,17 @@ accounting-approved `net_amount`, `total_tax`, `total_amount` and per-rate
 For an open Invoice. An Invoice with payments can be updated when every
 invoice-level `LinkedTxn` is a Payment and the new total is at least the amount
 paid (`TotalAmt - Balance`); the read-back then checks `Balance` is the new
-total minus the amount paid. A new total below the amount paid is refused with
-`quickbooks.invoice_update_below_paid`, and any other link (a deposit or an
-estimate) with `quickbooks.invoice_update_linked_unsupported`. A credit memo
+total minus the amount paid. A new total below the amount paid is the qualified
+expanded case `invoice_update_below_paid` (Invoices with exactly one linked
+Payment): where it is granted, QuickBooks keeps the Payment linked, it applies
+only the new total (`Balance` 0), and the
+excess stays on the Payment as unapplied customer credit. QuickBooks may apply
+that credit automatically to the same customer's other open Invoices; the
+runtime never moves or refunds it. The read-back checks the new total, a
+`Balance` of 0 and the same Payment links. Where the case is not granted, the
+update is refused with `quickbooks.invoice_update_below_paid` before any write.
+Any other link (a deposit or an estimate) is refused with
+`quickbooks.invoice_update_linked_unsupported`. A credit memo
 applied in QuickBooks is applied through a Payment, shows as a Payment link and
 is allowed, as QuickBooks allows. A Payment written through this runtime blocks
 updates of its Invoice only while its outcome is open (reserved, sent or

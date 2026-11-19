@@ -44,9 +44,11 @@ release gate returns `403 accounting.operation_disabled`; do not loop on it.
      by its exact id or name, and `PUT …/mappings/{kind}/{erp_code}` maps an
      ERP code to it. A QuickBooks `income_account` can be an Income or an
      Other Income account; a Xero one can be any revenue-class account.
-5. Check `GET …/settings`: a write dated before `sync_start_date` is refused
-   with `accounting.before_sync_start`, and a write of a disabled record type
-   with `accounting.record_type_disabled`.
+5. Check `GET …/settings`: a new document created before `sync_start_date`
+   is refused with `accounting.before_sync_start` (send `erp_created_at` so the
+   runtime judges by creation, not the document date; see
+   [The envelope](#the-envelope)), and a write of a disabled record type with
+   `accounting.record_type_disabled`.
 6. Read `GET …/capabilities` (`Accounting::capabilities`) to decide which
    actions to show. See [Capabilities](#capabilities).
 
@@ -79,9 +81,31 @@ Every write is `POST /v1/accounting/operations`:
 | `erp_id` | Your ERP document id for this operation (invoice id, payment id, refund id, ...). |
 | `idempotency_key` | Derive it once from the business event, store it, and reuse it unchanged on every retry. Up to 255 characters (the PHP SDK and Laravel package accept up to 128). |
 | `payload` | Operation-specific; see the examples. |
+| `erp_created_at` | Optional, creates only (`invoice.create`, `payment.create`, `refund.create`, `credit_memo.create`, `credit_memo.apply`). When the ERP created the document, RFC 3339 with the tenant's local offset (`2026-11-18T09:12:00-05:00`). See [Sync start date](#sync-start-date). |
 
 The `202` returns `job_id` and `polling_url`. Persist both with the ERP
 document before anything else.
+
+### Sync start date
+
+Each connection has a `sync_start_date` (`GET …/settings`), set to the day the
+customer connected. It keeps history that is already in the provider from
+being written again. It applies only to new documents:
+
+- With `erp_created_at`, a create is refused only when the ERP **created** the
+  document before that day. An invoice created on 18 Nov but dated 12 Nov, on
+  a connection made on 17 Nov, goes through. The date compared is the
+  calendar date in the offset you send, so send the tenant's local offset (a
+  `Z` time can land on the previous or next day).
+- Without it, the document date is compared, so a backdated document is
+  refused. Send `erp_created_at` on every create.
+- Updates, voids and deletes of an invoice, and voids, deletes and changes of
+  a payment, are never checked against it: the document is already in the
+  provider. The provider's closing date still applies to them.
+
+`erp_created_at` is not part of the request's identity. A document refused
+with `accounting.before_sync_start` was never accepted, so you can resend it
+with `erp_created_at` added under the same idempotency key (or a new one).
 
 ## Operations
 
@@ -781,7 +805,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.tax_mismatch` (409) | The ERP's tax does not match the mapped tax codes or the provider's verification. | Recompute tax from the mapped codes or send per-rate `tax_lines`; new key. | `review_and_resubmit` |
 | `accounting.document_exists` (409) | The invoice number already exists in the provider (voided ones count), or a customer name or item code does (archived ones count), or a create names the `erp_id` of an invoice or payment that was deleted (an `erp_id` is never reused). On QuickBooks a customer's name must also be unused by any vendor or employee (letter case ignored); the title names the record type and id. Returned by the submit itself or as the job's error; `candidate_provider_id` names it when known (for a name, only a customer or item you could bind). | Renumber in the ERP and send with a new key; for a name, rename the record in the ERP, or bind the existing customer or item instead of creating. A Xero credit memo whose number Xero itself refused after the send keeps that answer for its `erp_id`: resend it renumbered under a new `erp_id`. `link` can adopt it only if the runtime created it through `quickbooks()` on this connection; an invoice entered in the provider cannot be linked. | `review_and_resubmit` |
 | `accounting.period_closed` (409) | Dated on or before the provider's closing date. A payment reversal checks the payment's own date, an invoice delete the invoice's date, and a payment update that changes `date` both dates; the provider's own closed-period refusal (QuickBooks fault 6200, the Xero lock date) answers this too. | Re-date it, or reopen the period in the provider, then send with a new key (a reversal cannot be re-dated: reopen the period, then send a new reversal id). A Xero refund whose credit note is already written ends `accounting.refund_incomplete` instead: reopen the period, then resume it with its frozen date. | `review_and_resubmit` |
-| `accounting.before_sync_start` (409) | Dated before the connection's `sync_start_date`. | Keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
+| `accounting.before_sync_start` (409) | A new document created before the connection's `sync_start_date`: judged by `erp_created_at` when sent, else by the document date. `compared` says which (`erp_created_at` or `document_date`). | If it was created on or after that day but dated earlier, resend it with `erp_created_at` (same key is fine). Otherwise keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
 | `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. Xero answers it for `accounting.payment.update` (delete the payment, then create a new one under a new `erp_id`) and `accounting.invoice.delete` (void instead). No write was sent. | Read `GET …/capabilities` before offering the action; the refusal's `reason` and `alternative` say why and what to use instead. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Check your app's **Operations** section in the developer Console; if it says Off for everyone, contact support. Do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
@@ -827,3 +851,40 @@ code, whatever its HTTP status).
    cash refund Xero refused after the send is never re-sent, so it goes to the
    operator. A generic sync-job replay of either is refused
    `refund.replay_requires_continue`.
+
+## Reliable delivery: the outbox pattern
+
+The runtime can only act on what reaches it. If the ERP's own trigger, queue
+or worker drops a send, there is no job, no error and nothing in the activity
+feed. Make every send durable on the ERP side:
+
+1. **Write a pending outbox row in the same database transaction** as the
+   invoice or payment, with the `erp_id`, the idempotency key (generated once,
+   here) and `erp_created_at`. Store the built request
+   (`Accounting::buildRequest`) if you can.
+2. **A scheduler sends rows that have no `job_id`**, every few minutes, with
+   the row's key unchanged. A resend of a request already accepted returns
+   the same job (`idempotent_replay: true`), so this never writes twice. The
+   resend's `status` always reads `queued`; read the real state from the job.
+3. **Once a row has a `job_id`, poll it** (`GET /v1/accounting/operations/{job_id}`)
+   or use the job webhook. Do not resend it.
+4. **Set the row's state from the error**, with `OutboxDecision::for($e)` for
+   a send that threw, or `OutboxDecision::forJobError($code)` for a failed job
+   (TypeScript `outboxDecisionFor` / `outboxDecisionForJobError`; Python
+   `outbox_decision_for` / `outbox_decision_for_job_error`):
+
+   | State | From | Do |
+   | --- | --- | --- |
+   | `pending` | A send that threw `retry_same_request` or `fix_setup` (such as a payment whose invoice is not linked yet), any 5xx, network error or timeout | Resend later with the same key; honour `Retry-After`. Count attempts and escalate a row that stays pending. |
+   | `failed` | `fix_request`, `review_and_resubmit`; `accounting.before_sync_start` with `compared` `document_date`; and every failed job that is not `skipped` or `needs_person` (a same-key resend returns the same failed job) | Show the reason. After the fix (for a backdated create: add `erp_created_at`), send it with a **new** key and the same `erp_id`; the runtime never creates a second provider document for one `erp_id`. |
+   | `skipped` | `do_not_sync` | Keep it in the ERP only; do not resend. |
+   | `needs_person` | `stop_and_reconcile`, `ask_operator`, `fix_credentials`, anything unknown | Stop. Never resend under a new key. |
+
+5. **Send in order**: an invoice before its payments, refunds and credit
+   memos.
+6. **Alert on age**: a row still without a `job_id` after about 30 minutes
+   means a send is not getting through.
+
+A "send again" action for several documents is a loop over their rows; the
+runtime rate-limits per connection and answers `429` with `Retry-After`. The
+[Retry rules](#retry-rules) above still apply to every send.

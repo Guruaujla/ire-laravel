@@ -4,6 +4,11 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- `IntegrationRuntime::accounting()` create helpers accept `$erpCreatedAt`
+  and the SDK's `OutboxDecision` is available (needs
+  `ezee/integration-runtime-sdk` with both). docs/accounting-operations.md
+  gains "Sync start date" and "Reliable delivery: the outbox pattern".
+
 - `IntegrationRuntime::providers()` returns the SDK's `Providers` client
   (`GET /v1/providers`): the providers your app can connect, by category.
   Needs `ezee/integration-runtime-sdk` with `Providers`.

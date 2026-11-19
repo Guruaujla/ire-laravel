@@ -64,7 +64,8 @@ change when the tenant's provider changes.
    For `accounting.*`: `fix_setup` = fix the mapping/settings/link/connection, then
    resend the same saved request; `review_and_resubmit` = refresh, a person reviews,
    new business event with a new key; `do_not_sync` = keep it in the ERP only.
-   The table is in `accounting-operations.md` "Errors".
+   The table is in `accounting-operations.md` "Errors". Keep a pending outbox row per
+   document and map failures with `OutboxDecision::for($e)` ("Reliable delivery").
 10. Secrets stay in `.env` and server code. Never log the secret or full payloads.
 11. Use the runtime `tenant_id` from `IntegrationRuntime::tenants()->registerOrResolveTenant(...)`,
     not your own workspace ID.
@@ -76,9 +77,11 @@ use Ezee\IntegrationRuntime\Accounting;
 use Ezee\IntegrationRuntime\Laravel\Facades\IntegrationRuntime;
 
 // Pass $connectionId so a retried request stays bound to the company it was first sent to.
+// $invoice->created_at (tenant timezone): a backdated invoice created after connecting still syncs.
 $request = Accounting::buildRequest('accounting.invoice.create', $tenantId,
-    (string) $invoice->id, "invoice:{$invoice->id}:create", $payload, $connectionId);
-$invoice->update(['accounting_request' => $request]);    // persist first
+    (string) $invoice->id, "invoice:{$invoice->id}:create", $payload, $connectionId,
+    $invoice->created_at->copy()->setTimezone($tenantTimezone));
+$invoice->update(['accounting_request' => $request]);    // persist first, in the same transaction as the invoice
 $receipt = IntegrationRuntime::accounting()->submit($request);
 $invoice->update(['accounting_job_id' => $receipt->jobId]);
 IntegrationRuntime::track($receipt, $tenantId);

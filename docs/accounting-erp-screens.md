@@ -125,15 +125,18 @@ admin to confirm first: writes stop at once.
 `settings($tenantId, $connectionId)` returns `sync_start_date`,
 `record_types`, `historical_sync` and `revision`.
 
-- Show `sync_start_date` as "Documents dated before this date are not
-  synced". It is set to the day the customer connects. Earlier documents are
-  refused with `accounting.before_sync_start` (`do_not_sync`).
+- Show `sync_start_date` as "Documents created before this date are not
+  synced". It is set to the day the customer connects. Send `erp_created_at`
+  on every create: documents created earlier are refused with
+  `accounting.before_sync_start` (`do_not_sync`), while one created after
+  connecting but dated earlier goes through. Edits, voids and deletes of
+  documents already synced are not checked against it.
 - To sync older documents, let the admin move the date earlier with
   `updateSettings($tenantId, $connectionId, null, $settings['revision'],
   '2026-01-01')`. First match or link the provider's existing records of that
   period (section 3), or documents already in the provider may be written
-  twice. Moving it later also refuses later updates, voids, payments and
-  credits dated before the new date.
+  twice. Moving it later refuses new documents created before the new date;
+  edits, voids and deletes of synced documents are not affected.
 - Show one toggle per record type: invoice, payment, credit memo, refund.
   Save with `updateSettings($tenantId, $connectionId, $enabledTypes,
   $settings['revision'])`.
@@ -390,7 +393,7 @@ A row gets there in one of two ways:
 | --- | --- |
 | `fix_setup` | The setup is missing something. For `accounting.mapping_missing`, say "Map {mapping_kind} {mapping_erp_code}" and link to screen 3 or 4. For a disabled record type, link to screen 2. For an unlinked document or a connection problem, link to screen 1. After the fix, **Retry** resends the same stored request. |
 | `review_and_resubmit` | Show the problem: revision conflict, amount, tax, duplicate number or closed period. The person corrects the ERP document. **Resubmit** sends a new request with a new event id. |
-| `do_not_sync` | "Kept in the ERP only", with the reason: before the sync start date, or unsupported by the provider. No retry. |
+| `do_not_sync` | "Kept in the ERP only", with the reason: before the sync start date, or unsupported by the provider. No retry, except `accounting.before_sync_start` with `compared` `document_date`: if the document was created on or after the sync start date, resend it with `erp_created_at`. |
 | `retry_same_request` | "Will retry automatically". Resend the same request after `Retry-After`. |
 | `ask_operator` | "Contact support". A release gate refused it. Do not retry. |
 | `fix_credentials` | "Integration credentials are wrong". This is for your developers, not the admin. |

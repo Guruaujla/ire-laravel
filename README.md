@@ -192,7 +192,7 @@ Calls throw `Ezee\IntegrationRuntime\Exception\RuntimeProblemException` with
 | `fix_request` | Correct the input; keep the same idempotency key. |
 | `fix_setup` | `accounting.*` only: fix the mapping, settings, link or connection the problem names, then `submit()` the same saved array. |
 | `review_and_resubmit` | `accounting.*` only: the document changed or cannot be written as sent (revision, amount, tax, number, closed period). Refresh, have a person review, send the corrected document as a new business event with a new key. |
-| `do_not_sync` | `accounting.*` only: before the sync start date or unsupported by the provider. Keep it in the ERP only. |
+| `do_not_sync` | `accounting.*` only: created before the sync start date (pass `$erpCreatedAt` on creates so a backdated document is judged by when it was created) or unsupported by the provider. Keep it in the ERP only. |
 | `ask_operator` | A release gate or provisioning refused it. Do not loop. |
 | `stop_and_reconcile` | Identity conflict or uncertain outcome. Never mint a new key. |
 | `fix_credentials` | Check app/key/secret and the server clock. |

@@ -9,9 +9,9 @@ product.
 Requests carry your own meeting id (`external_ref`) and provider-neutral
 details. They never carry provider ids.
 
-> The Meetings API is available now; the first provider (Google Meet) is
-> being added. Until a provider is listed by `GET /v1/meetings/providers`, a
-> tenant has no meeting connection to use.
+> Google Meet is the first provider. A provider's operations are switched on
+> after its staging run; until then `POST /v1/meetings/operations` answers
+> `403 meetings.operation_disabled`.
 
 ## Steps
 
@@ -25,6 +25,11 @@ details. They never carry provider ids.
    capabilities and the tenant's active meeting `connections`. Store the
    `connection_id` the tenant chose.
 5. Create the meeting and store `meeting_ref` and `meeting.join_url`.
+
+To disconnect a meeting connection, send
+`POST /v1/connections/{id}/disconnect` with its `provider_key` and the
+`provider_account_id` from `GET /v1/meetings/providers` (the SDK's
+`Connections::disconnect()` takes it as an argument for meeting connections).
 
 ## Capabilities
 
@@ -135,6 +140,34 @@ otherwise, with `meeting_status`).
 returns `status` (`creating`, `active`, `ending`, `ended`, `failed`), the join
 link, meeting code and dial-in numbers.
 
+## Google Meet
+
+| Capability | Value |
+|---|---|
+| `fields_honored` | `access` |
+| `access_levels` | `open`, `trusted`, `restricted` |
+| `link_revocable` | `false` |
+| `personal_accounts` | `true` |
+
+- A Meet link is not a calendar event: `title`, `start`, `end` and
+  `timezone` are accepted and reported in `fields_ignored`. Put the
+  `join_url` on your own appointment or calendar event.
+- `meeting_code` is the Meet code (`abc-defg-hij`); `dial_in` is `null`.
+- `access` is in `fields_applied` only when Google's answer shows it was
+  applied; otherwise it is in `fields_ignored`.
+- Ending a meeting ends any call in progress, then sets the space to
+  `restricted` so only invited people can join. If Google refuses that change
+  (some accounts cannot restrict access), the meeting still ends and the link
+  stays open to its previous audience. The link itself is never deleted
+  (`link_revocable: false`).
+- The tenant connects a Google account (Workspace or personal) with the
+  Meet scope; the runtime only creates, reads and ends spaces it made.
+- A create or end Google did not confirm (timeout, 5xx, 429) is never sent
+  again. The operation fails with `meetings.create_uncertain` (the meeting is
+  `failed`; create again with a new key; the link of any space Google made is
+  never returned) or `meetings.end_uncertain` (the meeting stays
+  `active`; end it again with a new key).
+
 ## Errors
 
 | Status and code | What to do |
@@ -155,10 +188,17 @@ link, meeting code and dial-in numbers.
 | 400 (validation) | Fix the request body |
 
 A finished operation that did not produce a meeting has `error.code` in its
-status: the provider's refusal in neutral form, or
-`meetings.result_unverifiable` when the provider's answer could not be
-verified (a create is marked `failed`: create again with a new key; an end
-leaves the meeting `active`).
+status:
+
+| `error.code` | What to do |
+|---|---|
+| `meetings.provider_refused` | The provider refused (for example the account cannot create meetings); `error.message` says why. Fix it, then send again with a new key |
+| `meetings.reconnect_required` | The tenant must reconnect the provider, then send again with a new key |
+| `meetings.connection_not_active` | The connected account changed or is not usable; ask the tenant to reconnect |
+| `meetings.operation_disabled` | The operation was switched off; do not loop |
+| `meetings.create_uncertain` | The provider did not confirm the create; the meeting is `failed`. Create again with a new key |
+| `meetings.end_uncertain` | The provider did not confirm the end; the meeting stays `active`. End again with a new key |
+| `meetings.result_unverifiable` | The provider's answer could not be verified (a create is `failed`: create again with a new key; an end leaves the meeting `active`) |
 `error.message`, when present, is safe to show your user.
 
 ## SDK

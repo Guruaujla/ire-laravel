@@ -255,6 +255,37 @@
         }
       }
     },
+    "quickbooks.prepayment.create": {
+      "summary": "Record money received before its invoice (a retainer or wallet top-up) as a CAD Payment with no invoice: unapplied customer credit in Accounts Receivable, not income. Does not charge a card or move money.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.prepayment.created",
+        "recipe_version": 1,
+        "trigger_type": "erp.prepayment.created",
+        "object_type": "prepayment",
+        "internal_object_id": "wallet-topup-3001",
+        "idempotency_key": "prepayment:wallet-topup-3001:v1",
+        "payload": {
+          "provider_account_id": "1234567890",
+          "prepayment": {
+            "CustomerRef": {
+              "value": "7"
+            },
+            "TotalAmt": "500.00",
+            "CurrencyRef": {
+              "value": "CAD"
+            },
+            "DepositToAccountRef": {
+              "value": "20"
+            },
+            "TxnDate": "2026-11-01",
+            "PaymentRefNum": "RET-3001"
+          }
+        }
+      }
+    },
     "quickbooks.payment.void": {
       "summary": "Void one runtime Payment at the SyncToken the ERP last saw (sparse update, include=void). A changed SyncToken, a payment over several invoices or one named by a runtime refund is refused; never refetch and retry automatically.",
       "request": {

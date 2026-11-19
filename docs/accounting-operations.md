@@ -150,11 +150,13 @@ Rules that apply to all of them:
 ### Retainers and wallets
 
 **Rolling out.** The `accounting.prepayment.*` operations are in the contract
-and the SDKs, but no provider offers them yet: each answers `422
-accounting.capability_unsupported` with `reason` `not_offered_yet` until its
-provider writes ship and are enabled. `GET .../capabilities` shows when they
-become available. Until then, keep wallet top-ups in your ERP and sync them
-later (their dates are kept). Do not post them as income.
+and the SDKs. QuickBooks `prepayment.create` is built and stays disabled until
+it is qualified and enabled for your app (`422 accounting.operation_disabled`
+until then). The other operations, and every Xero one, answer `422
+accounting.capability_unsupported` with `reason` `not_offered_yet` until their
+provider writes ship. `GET .../capabilities` shows what is available. Until
+then, keep wallet top-ups in your ERP and sync them later (their dates are
+kept). Do not post them as income.
 
 Money a customer pays before the invoice (a retainer, deposit or wallet
 top-up) is a **prepayment**: customer credit, not income. Income and tax are
@@ -188,6 +190,9 @@ recorded on the real invoice; applying the prepayment settles it.
   (Settings, Account and settings, Advanced, Automation).
 - **Application date.** Xero records it (it may move it to the invoice date);
   QuickBooks has none, and the prepayment keeps its own date.
+- **Result.** A prepayment result carries `total_amount`, `remaining` (credit
+  not yet applied) and `applications` (`invoice_provider_id`, `amount`) as the
+  provider holds them, with `document_type` `prepayment`.
 - **Tax.** No tax is recorded on a prepayment. If a retainer is taxable when
   paid (ask the accountant), issue a retainer invoice and record its payment
   with `accounting.invoice.create` and `accounting.payment.create` instead.

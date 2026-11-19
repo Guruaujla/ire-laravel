@@ -421,6 +421,76 @@
           }
         }
       }
+    },
+    "accounting.prepayment.create": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.prepayment.create",
+      "erp_id": "WALLET-TOPUP-3001",
+      "idempotency_key": "prepayment:WALLET-TOPUP-3001:v1",
+      "payload": {
+        "prepayment": {
+          "date": "2026-11-01",
+          "amount": "500.00",
+          "currency": "CAD",
+          "customer": {
+            "erp_id": "CUST-1001"
+          },
+          "deposit_account": "BANK-OPERATING",
+          "reference": "RET-3001"
+        }
+      }
+    },
+    "accounting.prepayment.apply": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.prepayment.apply",
+      "erp_id": "WALLET-APPLY-4001",
+      "idempotency_key": "prepayment-apply:WALLET-APPLY-4001:v1",
+      "payload": {
+        "prepayment": {
+          "erp_id": "WALLET-TOPUP-3001"
+        },
+        "invoice": {
+          "erp_id": "INV-2001"
+        },
+        "application": {
+          "amount": "113.00",
+          "date": "2026-11-20"
+        }
+      }
+    },
+    "accounting.prepayment.unapply": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.prepayment.unapply",
+      "erp_id": "WALLET-APPLY-4001",
+      "idempotency_key": "prepayment-unapply:WALLET-APPLY-4001:v1",
+      "payload": {
+        "unapply_id": "WALLET-UNAPPLY-4001"
+      }
+    },
+    "accounting.prepayment.refund": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.prepayment.refund",
+      "erp_id": "WALLET-REFUND-5001",
+      "idempotency_key": "prepayment-refund:WALLET-REFUND-5001:v1",
+      "payload": {
+        "prepayment": {
+          "erp_id": "WALLET-TOPUP-3001"
+        },
+        "refund": {
+          "date": "2026-12-15",
+          "amount": "50.00",
+          "refund_account": "BANK-OPERATING"
+        }
+      }
+    },
+    "accounting.prepayment.void": {
+      "tenant_id": "ten_01JEXAMPLE",
+      "operation": "accounting.prepayment.void",
+      "erp_id": "WALLET-TOPUP-3001",
+      "idempotency_key": "prepayment-void:WALLET-TOPUP-3001:v1",
+      "payload": {
+        "void_id": "WALLET-VOID-3001"
+      }
     }
   }
 }

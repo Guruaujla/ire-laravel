@@ -81,7 +81,7 @@ Every write is `POST /v1/accounting/operations`:
 | `erp_id` | Your ERP document id for this operation (invoice id, payment id, refund id, ...). |
 | `idempotency_key` | Derive it once from the business event, store it, and reuse it unchanged on every retry. Up to 255 characters (the PHP SDK and Laravel package accept up to 128). |
 | `payload` | Operation-specific; see the examples. |
-| `erp_created_at` | Optional, creates only (`invoice.create`, `payment.create`, `refund.create`, `credit_memo.create`, `credit_memo.apply`). When the ERP created the document, RFC 3339 with the tenant's local offset (`2026-11-18T09:12:00-05:00`). See [Sync start date](#sync-start-date). |
+| `erp_created_at` | Optional, creates only (`invoice.create`, `payment.create`, `refund.create`, `credit_memo.create`, `credit_memo.apply`, `prepayment.create`, `prepayment.refund`). When the ERP created the document, RFC 3339 with the tenant's local offset (`2026-11-18T09:12:00-05:00`). See [Sync start date](#sync-start-date). |
 
 The `202` returns `job_id` and `polling_url`. Persist both with the ERP
 document before anything else.
@@ -124,6 +124,11 @@ with `erp_created_at` added under the same idempotency key (or a new one).
 | `accounting.refund.create` | ERP refund id | `refund` {number, date, lines with `original_erp_line_id`, payment_method?, refund_account}, `expected_totals`, `original_invoice` {erp_id, before_totals}, `original_payment.erp_id` |
 | `accounting.credit_memo.create` | ERP credit memo id | `credit_memo` {number, date, lines with `original_erp_line_id`}, `expected_totals`, `original_invoice` {erp_id, before_totals} |
 | `accounting.credit_memo.apply` | ERP application id | `application` {date, amount, currency, customer}, `credit_memo.erp_id`, `invoice` {erp_id, before_totals} |
+| `accounting.prepayment.create` | ERP prepayment (top-up) id | `prepayment` {date, amount, currency, customer, deposit_account?, payment_method?, reference?, private_note?} (see [Retainers and wallets](#retainers-and-wallets)) |
+| `accounting.prepayment.apply` | ERP application id | `prepayment.erp_id`, `invoice.erp_id`, `application` {amount, date?} |
+| `accounting.prepayment.unapply` | ERP application id | `unapply_id` |
+| `accounting.prepayment.refund` | ERP refund id | `prepayment.erp_id`, `refund` {date, amount, refund_account, reference?} |
+| `accounting.prepayment.void` | ERP prepayment id | `void_id` (QuickBooks only) |
 
 Rules that apply to all of them:
 
@@ -132,7 +137,8 @@ Rules that apply to all of them:
   provider's verified totals.
 - Lines carry `erp_line_id`. The result maps each to a `provider_line_id`;
   refunds and credit memos name the original line by `original_erp_line_id`.
-- Refund and credit memo `erp_id`s use only letters, digits and `_ . : -`.
+- `accounting.refund.create` and credit memo `erp_id`s use only letters,
+  digits and `_ . : -`.
 - Writes to an existing document carry the ERP's own last `revision` and
   before-state. The runtime never fills them in. A mismatch is `409
   accounting.revision_conflict`: refresh the document, show the difference to
@@ -140,6 +146,51 @@ Rules that apply to all of them:
 - The provider's closing date is checked on every write; a write dated on or
   before it is `409 accounting.period_closed`.
 - QuickBooks and Xero: CAD home currency only; unmapped tax codes are refused.
+
+### Retainers and wallets
+
+**Rolling out.** The `accounting.prepayment.*` operations are in the contract
+and the SDKs, but no provider offers them yet: each answers `422
+accounting.capability_unsupported` with `reason` `not_offered_yet` until its
+provider writes ship and are enabled. `GET .../capabilities` shows when they
+become available. Until then, keep wallet top-ups in your ERP and sync them
+later (their dates are kept). Do not post them as income.
+
+Money a customer pays before the invoice (a retainer, deposit or wallet
+top-up) is a **prepayment**: customer credit, not income. Income and tax are
+recorded on the real invoice; applying the prepayment settles it.
+
+| | QuickBooks | Xero |
+| --- | --- | --- |
+| `prepayment.create` | A payment with no invoice (unapplied; customer credit in Accounts Receivable) | An overpayment (customer credit in Accounts Receivable) |
+| `prepayment.apply` | The payment is applied to the invoice | An allocation of the overpayment to the invoice |
+| `prepayment.unapply` | That application is removed; the invoice reopens | The allocation is deleted; the invoice reopens |
+| `prepayment.refund` | A cheque from `refund_account`, linked to the payment | A refund payment against the overpayment |
+| `prepayment.void` | Voids the payment; refused while it has an open application or refund | Unsupported (`alternative` `accounting.prepayment.refund`): Xero cannot delete it |
+
+- **No revision to send.** Unlike other writes to an existing document,
+  `apply`, `unapply`, `refund` and `void` carry no `revision` or
+  before-state: the runtime reads the prepayment and invoice fresh, one write
+  at a time per connection, so concurrent applications queue instead of
+  conflicting.
+- **Settings.** The `payment` record type gates `create`, `apply`, `unapply`
+  and `void`; the `refund` record type gates `refund`.
+- **One prepayment per call.** A wallet draw that spends several top-ups is
+  one `apply` per top-up, oldest first.
+- **Limits are the provider's.** An application is at most the prepayment's
+  remaining credit and the invoice's open balance; the customer and currency
+  must match.
+- **QuickBooks "Automatically apply credits".** When this QuickBooks setting
+  is on, QuickBooks applies open credit to every new invoice for the customer
+  by itself. `apply` then completes without a second write, and every result
+  and event reports the applications QuickBooks actually holds. If your
+  wallet decides which invoices to pay, turn the setting off in QuickBooks
+  (Settings, Account and settings, Advanced, Automation).
+- **Application date.** Xero records it (it may move it to the invoice date);
+  QuickBooks has none, and the prepayment keeps its own date.
+- **Tax.** No tax is recorded on a prepayment. If a retainer is taxable when
+  paid (ask the accountant), issue a retainer invoice and record its payment
+  with `accounting.invoice.create` and `accounting.payment.create` instead.
 
 ### Reversing payments and invoices
 

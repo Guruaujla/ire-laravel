@@ -4,6 +4,10 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- `docs/accounting-operations.md` covers customer prepayments (retainers and
+  wallet top-ups), reached through `IntegrationRuntime::accounting()` with
+  the SDK's new prepayment methods. Not offered by any provider yet.
+
 - `IntegrationRuntime::meetings()` returns the SDK's `Meetings` client
   (`/v1/meetings/*`): create, end and read video meetings with the same code
   for every provider. Needs `ezee/integration-runtime-sdk` with `Meetings`.

@@ -4,6 +4,11 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- `docs/accounting-operations.md` documents QuickBooks prepayment apply and
+  unapply (built, disabled until qualified) and recommends turning off
+  QuickBooks "Automatically apply credits" for wallet users. An
+  `unapply_id` may be any id of 1-255 characters.
+
 - `docs/accounting-operations.md` covers customer prepayments (retainers and
   wallet top-ups), reached through `IntegrationRuntime::accounting()` with
   the SDK's new prepayment methods. Not offered by any provider yet.

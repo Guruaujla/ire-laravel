@@ -286,6 +286,44 @@
         }
       }
     },
+    "quickbooks.prepayment.apply": {
+      "summary": "Apply a runtime prepayment's customer credit to an invoice: the amount of this application, at most the prepayment's remaining credit and the invoice's open balance (QuickBooks decides the limits). Credit QuickBooks already applied to that invoice by itself counts toward it. Every other application on the prepayment is re-sent unchanged. The application id (internal_object_id) is never reused.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.prepayment.applied",
+        "recipe_version": 1,
+        "trigger_type": "erp.prepayment.applied",
+        "object_type": "prepayment_application",
+        "internal_object_id": "wallet-draw-4001",
+        "idempotency_key": "prepayment-apply:wallet-draw-4001:v1",
+        "payload": {
+          "provider_account_id": "1234567890",
+          "prepayment_id": "301",
+          "invoice_id": "145",
+          "amount": "200.00"
+        }
+      }
+    },
+    "quickbooks.prepayment.unapply": {
+      "summary": "Remove one runtime prepayment application from its invoice; the credit returns to the prepayment and the invoice reopens. The prepayment, invoice and amount come from the stored application; internal_object_id is this unapply's own id. An amount already removed in QuickBooks is not removed twice.",
+      "request": {
+        "tenant_id": "tenant_example",
+        "provider_key": "quickbooks",
+        "connection_id": "conn_example",
+        "recipe_key": "erp.quickbooks.prepayment.unapplied",
+        "recipe_version": 1,
+        "trigger_type": "erp.prepayment.unapplied",
+        "object_type": "prepayment_unapplication",
+        "internal_object_id": "wallet-undo-4001",
+        "idempotency_key": "prepayment-unapply:wallet-undo-4001:v1",
+        "payload": {
+          "provider_account_id": "1234567890",
+          "application_id": "wallet-draw-4001"
+        }
+      }
+    },
     "quickbooks.payment.void": {
       "summary": "Void one runtime Payment at the SyncToken the ERP last saw (sparse update, include=void). A changed SyncToken, a payment over several invoices or one named by a runtime refund is refused; never refetch and retry automatically.",
       "request": {

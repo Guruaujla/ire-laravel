@@ -150,9 +150,9 @@ Rules that apply to all of them:
 ### Retainers and wallets
 
 **Rolling out.** The `accounting.prepayment.*` operations are in the contract
-and the SDKs. QuickBooks `prepayment.create` is built and stays disabled until
-it is qualified and enabled for your app (`422 accounting.operation_disabled`
-until then). The other operations, and every Xero one, answer `422
+and the SDKs. QuickBooks `prepayment.create`, `prepayment.apply` and
+`prepayment.unapply` are built and stay disabled until each is qualified and
+enabled for your app (`422 accounting.operation_disabled` until then). The other operations, and every Xero one, answer `422
 accounting.capability_unsupported` with `reason` `not_offered_yet` until their
 provider writes ship. `GET .../capabilities` shows what is available. Until
 then, keep wallet top-ups in your ERP and sync them later (their dates are
@@ -187,12 +187,22 @@ recorded on the real invoice; applying the prepayment settles it.
   by itself. `apply` then completes without a second write, and every result
   and event reports the applications QuickBooks actually holds. If your
   wallet decides which invoices to pay, turn the setting off in QuickBooks
-  (Settings, Account and settings, Advanced, Automation).
+  (Settings, Account and settings, Advanced, Automation). We recommend it off
+  for every wallet user. The capability feature `prepayment.auto_apply_credit`
+  says the connection reports these automatic applications.
 - **Application date.** Xero records it (it may move it to the invoice date);
   QuickBooks has none, and the prepayment keeps its own date.
 - **Result.** A prepayment result carries `total_amount`, `remaining` (credit
   not yet applied) and `applications` (`invoice_provider_id`, `amount`) as the
-  provider holds them, with `document_type` `prepayment`.
+  provider holds them, with `document_type` `prepayment`. An `apply` or
+  `unapply` result has `document_type` `prepayment_application`, with
+  `application` (`amount`, and `auto_applied_amount`: the part QuickBooks had
+  already applied by itself), `prepayment` (`erp_id`, `provider_id`) and the
+  invoice it touched.
+- **Application ids are never reused.** An application id names one
+  application for good. To apply again after an `unapply`, send a new
+  application id; an `unapply` refused for good can be retried under a new
+  `unapply_id` (any id of 1-255 characters).
 - **Tax.** No tax is recorded on a prepayment. If a retainer is taxable when
   paid (ask the accountant), issue a retainer invoice and record its payment
   with `accounting.invoice.create` and `accounting.payment.create` instead.
@@ -869,7 +879,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. Xero answers it for `accounting.payment.update` (delete the payment, then create a new one under a new `erp_id`) and `accounting.invoice.delete` (void instead). No write was sent. | Read `GET …/capabilities` before offering the action; the refusal's `reason` and `alternative` say why and what to use instead. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Check your app's **Operations** section in the developer Console; if it says Off for everyone, contact support. Do not loop. | `ask_operator` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
-| `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (QuickBooks) a void or delete of this invoice or another adjustment of it, or (Xero) a resume of a refund whose job is still running, or a void, delete or update of this payment (for a refund: of the payment it returns), is still pending at the provider. | Poll it to completion, then resend the same request. | `retry_same_request` |
+| `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (QuickBooks) a void or delete of this invoice or another adjustment of it, or (Xero) a resume of a refund whose job is still running, or a void, delete or update of this payment (for a refund: of the payment it returns), or (QuickBooks) another apply or unapply of this prepayment, is still pending at the provider (a prepayment change QuickBooks answered in another state waits for operator reconciliation). | Poll it to completion, then resend the same request. | `retry_same_request` |
 | `accounting.write_uncertain` (409, job error) | A customer, item or (Xero) invoice, payment, credit memo, credit application or refund credit note write may have reached the provider but was not confirmed, or the invoice the provider holds differs from what was sent. With `provider_detail` `recipe.external_id_map_not_linked`, the provider call ran but the runtime could not record the link to the new record; `message` says so. The runtime never re-sends it. A customer or item ERP id answers `accounting.operation_in_progress` until an operator reconciles it; an invoice stays with its reservation for the operator. | Do not resend, and do not resend the invoice under a new key. Check the document in the provider and ask the operator to reconcile. | `stop_and_reconcile` |
 | `accounting.refund_incomplete` (409, job error) | A Xero refund is two writes: a credit note, then its cash refund. The credit note was written and verified; the cash refund was proved not written. `candidate_provider_id` names the open credit note, and the refund keeps its budget against the invoice and payment. | When the cash refund was refused before it was sent (no step-2 row, or one with no provider-call clock; the message says `was not written`): fix the cause in Xero, then resume with the same `erp_id`, a new key and the same credit-note part (`refund_account` and `reference` may change): only the cash refund is sent. A cause of `xero.period_closed` (a lock date moved after the credit note) keeps the refund's frozen `date`: reopen the period in Xero, then resume. When Xero refused the cash refund after it was sent (the message says `was refused by Xero`), it is never re-sent for that `erp_id` and a resume sends nothing: ask the operator. Or ask the operator to reconcile it. Never resubmit the refund under a new `erp_id`. A refund credit note that did not verify answers `accounting.write_uncertain` instead, and is resumed only after the operator reconciles it. | `stop_and_reconcile` |
 | `accounting.link_conflict` (409) | The invoice is linked with a different line map, or its provider invoice is linked to another ERP id. | Send the recorded line map, or ask support to correct it. | `stop_and_reconcile` |

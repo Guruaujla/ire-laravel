@@ -88,7 +88,8 @@ $status = $accounting->status($tenantId, $event->jobId);
 ```
 
 Writes: `upsertCustomer`, `upsertItem`, `createInvoice`, `updateInvoice`,
-`voidInvoice`, `createPayment`, `createPrepayment`, `createRefund`, `createCreditMemo`,
+`voidInvoice`, `createPayment`, `createPrepayment`, `applyPrepayment`,
+`unapplyPrepayment`, `createRefund`, `createCreditMemo`,
 `applyCreditMemo`. Reads and onboarding: `status`, `providers`,
 `connectionId`, `refresh`, `link`, `referenceOptions`/`referenceData`, `getMapping`/`setMapping`/
 `deleteMapping`, `settings`/`updateSettings`, `listRecords`/`matchRecords`/

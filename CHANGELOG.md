@@ -4,6 +4,11 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- `IntegrationRuntime::meetings()` returns the SDK's `Meetings` client
+  (`/v1/meetings/*`): create, end and read video meetings with the same code
+  for every provider. Needs `ezee/integration-runtime-sdk` with `Meetings`.
+- Docs: new `docs/meetings.md` (Meetings API).
+
 - `IntegrationRuntime::accounting()` create helpers accept `$erpCreatedAt`
   and the SDK's `OutboxDecision` is available (needs
   `ezee/integration-runtime-sdk` with both). docs/accounting-operations.md

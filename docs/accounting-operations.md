@@ -464,12 +464,16 @@ verified read-back (`""` when an update cleared it).
 ### Invoice reference
 
 `invoice.reference` is optional text printed on the invoice, such as the
-ERP's invoice title. It is single-line text with no leading or trailing spaces,
-at most 255 characters.
+ERP's invoice title, at most 255 characters.
 
-- **Create:** 1 to 255 characters. Leave it out for no reference.
+- The runtime cleans it before anything else: line breaks and tabs become one
+  space, other control characters (U+0000-U+001F) are removed, and leading and trailing spaces
+  are trimmed. The cleaned value is what is sent, checked on read-back and
+  returned in the result. A title with a trailing space or a line break is
+  accepted, not refused.
+- **Create:** leave it out, or send `""` (or only spaces), for no reference.
 - **Update:** leave it out to keep the provider's current reference; send `""`
-  to clear it.
+  (or only spaces) to clear it.
 - **Xero:** the invoice's `Reference`. **QuickBooks:** the invoice's
   `CustomerMemo` (the message displayed on the invoice).
 - The reference is checked on the provider read-back like every other field.

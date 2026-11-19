@@ -9,7 +9,7 @@ product.
 Requests carry your own meeting id (`external_ref`) and provider-neutral
 details. They never carry provider ids.
 
-> Google Meet is the first provider. A provider's operations are switched on
+> Google Meet and Microsoft Teams are available. A provider's operations are switched on
 > after its staging run; until then `POST /v1/meetings/operations` answers
 > `403 meetings.operation_disabled`.
 
@@ -167,6 +167,41 @@ link, meeting code and dial-in numbers.
   `failed`; create again with a new key; the link of any space Google made is
   never returned) or `meetings.end_uncertain` (the meeting stays
   `active`; end it again with a new key).
+
+## Microsoft Teams
+
+| Capability | Value |
+|---|---|
+| `fields_honored` | `title`, `start`, `end`, `access` |
+| `access_levels` | `open`, `trusted`, `restricted` |
+| `link_revocable` | `false` |
+| `personal_accounts` | `false` |
+
+- The meeting is a Teams online meeting (not a calendar event): `title` is
+  its subject and `start`/`end` its times. `timezone` is reported in
+  `fields_ignored` (times are instants with an offset).
+- `access` sets who skips the lobby: `open` everyone, `trusted` people in the
+  tenant's organization, `restricted` only the organizer. If Teams refuses or
+  ignores that change, the meeting is still created and `access` is in
+  `fields_ignored`.
+- `meeting_code` is the Teams meeting ID; `dial_in` lists the toll and
+  toll-free numbers when the organizer has audio conferencing, else `null`.
+- Ending a meeting first sets its lobby so only the organizer joins
+  directly (best effort), then deletes it in Teams. Teams does not stop a
+  call already in progress, and a deleted meeting's link may still open, so
+  the link is not revocable (`link_revocable: false`). A meeting the
+  organizer already deleted counts as ended.
+- The tenant connects a work or school Microsoft 365 account (personal
+  Microsoft accounts are refused) and consents to `OnlineMeetings.ReadWrite`.
+  Some organizations require an admin to approve the app first.
+- A create Teams did not confirm (timeout, 5xx, 429) is never sent again on
+  that key: the operation fails with `meetings.create_uncertain`. Create
+  again with a new key and the same `external_ref` on the same connection:
+  Teams returns the meeting it already made, so no second meeting exists. A
+  Teams answer whose meeting cannot be verified fails with
+  `meetings.result_unverifiable`. An end Teams did not
+  confirm fails with `meetings.end_uncertain` (the meeting stays `active`;
+  end it again with a new key).
 
 ## Errors
 

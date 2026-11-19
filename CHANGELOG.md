@@ -12,7 +12,7 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
   (`/v1/meetings/*`): create, end and read video meetings with the same code
   for every provider. Needs `ezee/integration-runtime-sdk` with `Meetings`.
 - Docs: new `docs/meetings.md` (Meetings API), including the Google Meet
-  provider section and the operation `error.code` table.
+  and Microsoft Teams provider sections and the operation `error.code` table.
 
 - `IntegrationRuntime::accounting()` create helpers accept `$erpCreatedAt`
   and the SDK's `OutboxDecision` is available (needs

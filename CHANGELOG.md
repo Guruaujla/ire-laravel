@@ -4,6 +4,10 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- `IntegrationRuntime::providers()` returns the SDK's `Providers` client
+  (`GET /v1/providers`): the providers your app can connect, by category.
+  Needs `ezee/integration-runtime-sdk` with `Providers`.
+
 - `IntegrationRuntime::activity()` returns the SDK's `Activity` client for the
   tenant activity log (`GET /v1/activity`). Needs `ezee/integration-runtime-sdk`
   with `Activity`.

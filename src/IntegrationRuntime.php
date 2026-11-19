@@ -11,6 +11,7 @@ use Ezee\IntegrationRuntime\Connections;
 use Ezee\IntegrationRuntime\Jobs;
 use Ezee\IntegrationRuntime\Laravel\Jobs\WaitForSyncJob;
 use Ezee\IntegrationRuntime\OperationReceipt;
+use Ezee\IntegrationRuntime\Providers;
 use Ezee\IntegrationRuntime\QuickBooks;
 use Ezee\IntegrationRuntime\TenantClient;
 
@@ -60,6 +61,12 @@ final class IntegrationRuntime
     public function activity(): Activity
     {
         return new Activity($this->client);
+    }
+
+    /** The providers your app can connect, by category (`GET /v1/providers`). */
+    public function providers(): Providers
+    {
+        return new Providers($this->client);
     }
 
     public function connections(): Connections

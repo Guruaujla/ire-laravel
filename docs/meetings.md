@@ -37,8 +37,9 @@ Each provider in `GET /v1/meetings/providers` has:
 
 | Field | Meaning |
 |---|---|
-| `operations` | `meeting.create`, `meeting.end` |
+| `operations` | `meeting.create`, `meeting.update`, `meeting.end` |
 | `fields_honored` | Which optional details the provider applies (`title`, `start`, `end`, `timezone`, `access`) |
+| `updatable_fields` | Which fields `meeting.update` can change |
 | `access_levels` | Which `access` values it can apply |
 | `link_revocable` | Whether ending a meeting stops its link from working |
 | `personal_accounts` | Whether a personal (non-business) account can connect |
@@ -118,6 +119,53 @@ it is still running: poll `GET /v1/meetings/operations/{job_id}?tenant_id=…`
   you get `409 meetings.create_in_progress`; retry later. After a failed
   create, a new key creates a fresh meeting.
 
+## Update a meeting
+
+```http
+POST /v1/meetings/operations
+{
+  "operation": "meeting.update",
+  "tenant_id": "tnt_…",
+  "connection_id": "conn_…",
+  "idempotency_key": "appointment-42:update-1",
+  "meeting_ref": "6f1c…",
+  "changes": {
+    "title": "Site visit (moved)",
+    "start": "2026-11-21T10:00:00-05:00",
+    "end": "2026-11-21T10:30:00-05:00",
+    "access": "restricted"
+  }
+}
+```
+
+- `changes` needs at least one field. Each is an absolute value; a field you
+  leave out stays as it is. `start` and `end` go together.
+- Only fields in the provider's `updatable_fields` may change. Another field
+  is refused up front with `422 meetings.capability_unsupported` (the problem
+  names the `field`), and nothing is sent. `timezone` is accepted and
+  reported in `fields_ignored`; an update with only `timezone` is refused.
+- Only an `active` meeting can be updated (`409 meetings.meeting_not_active`
+  otherwise), from the account that created it
+  (`409 meetings.account_changed`).
+- One write at a time per meeting. While an update is in flight, another
+  update or an end gets `409 meetings.update_in_progress`; retry once it
+  finishes. The meeting shows `update_in_progress: true` meanwhile.
+- The answer is the operation status, as for create. Once it finished,
+  `update_result` lists what this update changed (`fields_applied`) and what
+  the provider did not apply (`fields_ignored`). `meeting` shows the
+  meeting's `title`, `start`, `end` and `access` as the provider's answer
+  showed them, never just what you sent.
+- An update the provider did not confirm (timeout, 5xx, 429) is never sent
+  again on that key: it fails with `meetings.update_uncertain`, and the
+  meeting keeps its stored values. Send it again with a new key; that is safe
+  because an update sets absolute values.
+- An update whose first call never reached admission for 2 minutes may be
+  taken over by an end or another update; retrying its key then answers
+  `409 meetings.update_superseded`. Send it again with a new key.
+- If another write takes the meeting after an update was accepted but before
+  it ran, the update's operation fails with `meetings.update_superseded` and
+  nothing is sent to the provider.
+
 ## End a meeting
 
 ```http
@@ -138,13 +186,16 @@ otherwise, with `meeting_status`).
 
 `GET /v1/meetings/connections/{connection_id}/meetings/{meeting_ref}?tenant_id=…`
 returns `status` (`creating`, `active`, `ending`, `ended`, `failed`), the join
-link, meeting code and dial-in numbers.
+link, meeting code and dial-in numbers, the `title`, `start`, `end` and
+`access` as the provider last confirmed them (`null` when it stores none, and
+for meetings created before updates shipped), and `update_in_progress`.
 
 ## Google Meet
 
 | Capability | Value |
 |---|---|
 | `fields_honored` | `access` |
+| `updatable_fields` | `access` |
 | `access_levels` | `open`, `trusted`, `restricted` |
 | `link_revocable` | `false` |
 | `personal_accounts` | `true` |
@@ -153,6 +204,9 @@ link, meeting code and dial-in numbers.
   `timezone` are accepted and reported in `fields_ignored`. Put the
   `join_url` on your own appointment or calendar event.
 - `meeting_code` is the Meet code (`abc-defg-hij`); `dial_in` is `null`.
+- An update can change only `access` (a title or time change is refused,
+  since Meet stores none). It is in `fields_applied` only when Google's answer
+  shows the new access type.
 - `access` is in `fields_applied` only when Google's answer shows it was
   applied; otherwise it is in `fields_ignored`.
 - Ending a meeting ends any call in progress, then sets the space to
@@ -173,6 +227,7 @@ link, meeting code and dial-in numbers.
 | Capability | Value |
 |---|---|
 | `fields_honored` | `title`, `start`, `end`, `access` |
+| `updatable_fields` | `title`, `start`, `end`, `access` |
 | `access_levels` | `open`, `trusted`, `restricted` |
 | `link_revocable` | `false` |
 | `personal_accounts` | `false` |
@@ -184,6 +239,10 @@ link, meeting code and dial-in numbers.
   tenant's organization, `restricted` only the organizer. If Teams refuses or
   ignores that change, the meeting is still created and `access` is in
   `fields_ignored`.
+- An update changes the subject, the times and the lobby in one call. The
+  times are meeting details only: Teams sends nobody a notice, and the link
+  does not stop working at `end`. Tell attendees yourself, or use a
+  calendar event. Times come back in UTC (`2026-11-21T15:00:00.000Z`).
 - `meeting_code` is the Teams meeting ID; `dial_in` lists the toll and
   toll-free numbers when the organizer has audio conferencing, else `null`.
 - Ending a meeting first sets its lobby so only the organizer joins
@@ -210,13 +269,15 @@ link, meeting code and dial-in numbers.
 | 404 `meetings.connection_not_found` | The connection is not a meeting connection of this tenant; list connections again |
 | 409 `meetings.connection_not_active` | Ask the tenant to reconnect the provider |
 | 503 `meetings.provider_unavailable` | The provider is not enabled for your app; contact support |
-| 403 `meetings.operation_disabled` | The operation is not enabled yet; do not loop. Retry later with the same key: the meeting stays reserved for it |
+| 403 `meetings.operation_disabled` | The operation is not enabled yet; do not loop. Retry later with the same key: a create or end stays reserved for it (a refused update holds nothing) |
 | 422 `meetings.capability_unsupported` | Drop the named `field` |
 | 409 `meetings.idempotency_conflict` | Use a new key for a different request |
 | 409 `meetings.create_in_progress` | Retry later |
 | 409 `meetings.external_ref_conflict` | The `external_ref` belongs to a meeting on another connection |
 | 404 `meetings.meeting_not_found` | Wrong `meeting_ref` or connection |
-| 409 `meetings.meeting_not_active` | Nothing to end |
+| 409 `meetings.meeting_not_active` | Nothing to update or end |
+| 409 `meetings.update_in_progress` | Another update of this meeting is in flight; retry once it finishes |
+| 409 `meetings.update_superseded` | This update was never sent and another write took the meeting; send it again with a new key |
 | 409 `meetings.account_changed` | The tenant reconnected another account; reconnect the account that created the meeting to end it |
 | 429 `meetings.rate_limited` | Wait for `Retry-After`, then retry with the same key |
 | 503 `meetings.state_unavailable` | Retry with the same key |
@@ -233,7 +294,8 @@ status:
 | `meetings.operation_disabled` | The operation was switched off; do not loop |
 | `meetings.create_uncertain` | The provider did not confirm the create; the meeting is `failed`. Create again with a new key |
 | `meetings.end_uncertain` | The provider did not confirm the end; the meeting stays `active`. End again with a new key |
-| `meetings.result_unverifiable` | The provider's answer could not be verified (a create is `failed`: create again with a new key; an end leaves the meeting `active`) |
+| `meetings.update_uncertain` | The provider did not confirm the update; the meeting keeps its stored values. Send it again with a new key |
+| `meetings.result_unverifiable` | The provider's answer could not be verified (a create is `failed`: create again with a new key; an end leaves the meeting `active`; an update changes nothing stored) |
 `error.message`, when present, is safe to show your user.
 
 ## SDK
@@ -250,4 +312,10 @@ if ($op['status'] !== 'completed') {
     $op = $meetings->operation($tenantId, $op['job_id']); // poll later, e.g. in a queued job
 }
 $joinUrl = $op['meeting']['join_url'] ?? null;
+
+// Move it (Teams: title and times; Google Meet: access only).
+$op = $meetings->update($tenantId, $connectionId, "appointment:{$id}:update:{$version}", $meetingRef, [
+    'start' => '2026-11-21T10:00:00-05:00',
+    'end' => '2026-11-21T10:30:00-05:00',
+]);
 ```

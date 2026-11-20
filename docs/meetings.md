@@ -206,7 +206,9 @@ for meetings created before updates shipped), and `update_in_progress`.
 - `meeting_code` is the Meet code (`abc-defg-hij`); `dial_in` is `null`.
 - An update can change only `access` (a title or time change is refused,
   since Meet stores none). It is in `fields_applied` only when Google's answer
-  shows the new access type.
+  shows the new access type. A personal Google account refuses
+  `restricted` (the update fails with `meetings.provider_refused`); use
+  `open` or `trusted` there.
 - `access` is in `fields_applied` only when Google's answer shows it was
   applied; otherwise it is in `fields_ignored`.
 - Ending a meeting ends any call in progress, then sets the space to
@@ -289,7 +291,7 @@ status:
 | `error.code` | What to do |
 |---|---|
 | `meetings.provider_refused` | The provider refused (for example the account cannot create meetings); `error.message` says why. Fix it, then send again with a new key |
-| `meetings.reconnect_required` | The tenant must reconnect the provider, then send again with a new key |
+| `meetings.reconnect_required` | The provider no longer accepts the connection's access (for example the user removed the app from their account), so the operation did not complete. When the provider revoked the refresh token, the connection also moves to `reconnect_required` and you get a `connection.reconnect_required` webhook. The tenant must reconnect, then send again with a new key |
 | `meetings.connection_not_active` | The connected account changed or is not usable; ask the tenant to reconnect |
 | `meetings.operation_disabled` | The operation was switched off; do not loop |
 | `meetings.create_uncertain` | The provider did not confirm the create; the meeting is `failed`. Create again with a new key |

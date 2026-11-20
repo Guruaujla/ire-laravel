@@ -199,6 +199,17 @@ recorded on the real invoice; applying the prepayment settles it.
   send none, the later of the invoice and prepayment dates (Xero moves an
   earlier date to the later one). The result's `application.date` is the date
   Xero stored. QuickBooks has none, and the prepayment keeps its own date.
+- **Xero connections made before prepayments need a reconnect.** A Xero
+  prepayment is a bank transaction, which needs Xero's
+  `accounting.banktransactions` scope. Connections consented before the
+  runtime asked for it do not hold it: `prepayment.create` on such a
+  connection is refused `409 accounting.reconnect_required` (`missing_scopes`
+  `accounting.banktransactions`, `provider_detail` `xero.scope_missing`)
+  before anything is sent, and `GET .../capabilities` shows it unavailable
+  with `reason` `reconnect_required`. Ask the customer to reconnect Xero (the
+  same connect-session flow), then resend the same request. Nothing else
+  needs a reconnect: invoices, payments, credit memos, refunds, `apply` and
+  `unapply` keep working on the older grant.
 - **Xero.** A prepayment is an overpayment into the mapped `deposit_account`
   (required), with `reference` as its Reference; `payment_method` and
   `private_note` are accepted and ignored. `apply` allocates a prepayment
@@ -464,7 +475,9 @@ action from it; never branch on `provider_key`.
   `not_enabled_for_app`, `disabled` (off for every tenant),
   `disabled_for_tenant`, `disabled_for_connection` (the connection's settings
   turn the record type off, or a per-connection case is not granted),
-  `misconfigured` (ask support; retrying does not help), `unavailable` (could
+  `misconfigured` (ask support; retrying does not help), `reconnect_required`
+  (the connection was consented before the operation needed a scope it now
+  needs; `detail` names it; reconnect, then read again), `unavailable` (could
   not be read; read again later). Treat an unknown reason as not available.
 - `performed_as`: the operation the provider actually performs, when it
   differs. Xero has no payment void, so `accounting.payment.void` deletes the
@@ -727,9 +740,15 @@ included).
   PHP SDK (1.4.0 or later), pass the provider as the fourth argument:
   `connections()->start($tenantId, $returnUrl, $state, 'xero')`. Earlier
   versions always send `quickbooks`; send the request yourself for Xero there.
-- Xero uses a fixed scope set. Send no `scopes`, or exactly that set; any
-  other set is refused `400 connect.scopes_not_permitted` and no session is
-  created.
+- Xero uses a fixed scope set: `openid profile email offline_access
+  accounting.invoices accounting.payments accounting.banktransactions
+  accounting.contacts accounting.settings` (Xero's granular scopes).
+  `accounting.banktransactions` was added for prepayments; a connection
+  consented before that keeps working for everything else and is refused
+  only for `accounting.prepayment.create` until it reconnects (see
+  [Retainers and wallets](#retainers-and-wallets)). Send no `scopes`
+  (recommended), or exactly that set; any other set is refused `400
+  connect.scopes_not_permitted` and no session is created.
 - `503 connect.provider_not_configured` means the runtime is not configured
   for Xero in this environment. Do not retry automatically; contact the
   runtime operator.
@@ -901,6 +920,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.before_sync_start` (409) | A new document created before the connection's `sync_start_date`: judged by `erp_created_at` when sent, else by the document date. `compared` says which (`erp_created_at` or `document_date`). | If it was created on or after that day but dated earlier, resend it with `erp_created_at` (same key is fine). Otherwise keep it in the ERP only, or move `sync_start_date` earlier (settings PUT) after matching the period's existing provider records. | `do_not_sync` |
 | `accounting.capability_unsupported` (422) | The provider does not support this operation or currency (QuickBooks: CAD only), or the request needs a QuickBooks expanded case (such as a payment across several invoices, a refund with mixed funding, or an expanded invoice update) that is not qualified for the app. Xero answers it for `accounting.payment.update` (delete the payment, then create a new one under a new `erp_id`) and `accounting.invoice.delete` (void instead). No write was sent. | Read `GET …/capabilities` before offering the action; the refusal's `reason` and `alternative` say why and what to use instead. Do not retry; the request succeeds only after the case is qualified for the app. | `do_not_sync` |
 | `accounting.operation_disabled` (403) | A release gate refused the operation. | Check your app's **Operations** section in the developer Console; if it says Off for everyone, contact support. Do not loop. | `ask_operator` |
+| `accounting.reconnect_required` (409) | The connection's grant lacks a scope this operation needs: it was consented before the operation needed it (Xero `accounting.prepayment.create` needs `accounting.banktransactions`). `missing_scopes` lists them, space-separated. Nothing was sent. | Ask the customer to reconnect the connection, then resend the same request unchanged. | `fix_setup` |
 | `accounting.idempotency_conflict` / `idempotency_key_conflict` (409) | Same key, different request, or the connection now points at another company. | Stop. Resend the original request unchanged; never mint a new key to get past it. | `stop_and_reconcile` |
 | `accounting.operation_in_progress` (409) | A customer or item write for this ERP id (a QuickBooks customer or item write that QuickBooks refused with a validation error frees the ERP id, so a corrected resend under a new key is accepted), or (Xero) another update or void, or another credit memo, credit application or refund, of this invoice, or (QuickBooks) a void or delete of this invoice or another adjustment of it, or (Xero) a resume of a refund whose job is still running, or a void, delete or update of this payment (for a refund: of the payment it returns), or (QuickBooks) another apply or unapply of this prepayment, is still pending at the provider (a prepayment change QuickBooks answered in another state waits for operator reconciliation). | Poll it to completion, then resend the same request. | `retry_same_request` |
 | `accounting.write_uncertain` (409, job error) | A customer, item or (Xero) invoice, payment, credit memo, credit application or refund credit note write may have reached the provider but was not confirmed, or the invoice the provider holds differs from what was sent. With `provider_detail` `recipe.external_id_map_not_linked`, the provider call ran but the runtime could not record the link to the new record; `message` says so. The runtime never re-sends it. A customer or item ERP id answers `accounting.operation_in_progress` until an operator reconciles it; an invoice stays with its reservation for the operator. | Do not resend, and do not resend the invoice under a new key. Check the document in the provider and ask the operator to reconcile. | `stop_and_reconcile` |
@@ -924,7 +944,7 @@ the PHP SDK and Laravel package (1.3.1 and later), never on the message.
 | `accounting.connection_not_found` (404) | The connection id is not this tenant's accounting connection. | Read it from `GET /v1/accounting/providers`. | `fix_request` |
 | `accounting.operation_not_found` (404) | Unknown `job_id` for this tenant. | Use the `job_id` from the `202`. | `fix_request` |
 | `accounting.invalid_input` (400) | An unknown or duplicate field or query parameter. For QuickBooks, also a payment that leaves out `payment_method` or `deposit_account`, or a refund that leaves out `payment_method` (its only optional ref), before leaving it out is enabled for the app; the job fails on its first attempt, its message names the field, and no write was sent. | Send only documented neutral fields. For a left-out ref, send the named field under a new idempotency key; the job can still be refused for another expanded case, such as a refund with mixed funding, which is decided after QuickBooks reads. | `fix_request` |
-| `accounting.provider_refused` (native status) | Native admission refused it for a reason with no neutral code; `provider_detail` has the native code. A retry of a QuickBooks invoice `void_id` or `delete_id` QuickBooks already refused answers this too (`provider_detail` `quickbooks.adjustment_claim_refused`). | Read `provider_detail`; fix the request or escalate. For a refused void or delete, fix the cause and send a new id with a new key. | by HTTP status |
+| `accounting.provider_refused` (native status) | Native admission refused it for a reason with no neutral code; `provider_detail` has the native code. A retry of a QuickBooks invoice `void_id` or `delete_id` QuickBooks already refused answers this too (`provider_detail` `quickbooks.adjustment_claim_refused`). A Xero prepayment write Xero refused authorisation for (HTTP 401 or 403 on its first send) ends as a failed job with `provider_detail` `xero.authorisation_refused`: nothing was written. | Read `provider_detail`; fix the request or escalate. For a refused void or delete, fix the cause and send a new id with a new key. For `xero.authorisation_refused`, reconnect if the connection lacks access, then send it under a new `erp_id` (or application or `unapply_id`) with a new key. | by HTTP status |
 
 The enum is open: handle unknown codes as "stop and show to a person"
 (`decision()` returns `stop_and_reconcile` for any unknown `accounting.*`

@@ -43,6 +43,7 @@ Each provider in `GET /v1/meetings/providers` has:
 | `access_levels` | Which `access` values it can apply |
 | `link_revocable` | Whether ending a meeting stops its link from working |
 | `personal_accounts` | Whether a personal (non-business) account can connect |
+| `artifacts` | What the after-meeting read returns (`recordings`, `transcripts`, `view_links`), or `null` when the provider has none |
 
 A detail the provider cannot apply is refused with `422
 meetings.capability_unsupported` (the problem names the `field`); send only
@@ -190,6 +191,59 @@ link, meeting code and dial-in numbers, the `title`, `start`, `end` and
 `access` as the provider last confirmed them (`null` when it stores none, and
 for meetings created before updates shipped), and `update_in_progress`.
 
+## After the meeting
+
+`GET /v1/meetings/connections/{connection_id}/meetings/{meeting_ref}/artifacts?tenant_id=…`
+returns the meeting's recording and transcript links and when each call
+started and ended:
+
+```json
+{
+  "meeting_ref": "6f1c…",
+  "status": "available",
+  "reason": null,
+  "final": true,
+  "stale": false,
+  "conferences": [{ "started_at": "2026-11-21T15:00:04Z", "ended_at": "2026-11-21T15:31:40Z" }],
+  "recordings": [{
+    "artifact_id": "conferenceRecords/…/recordings/…",
+    "state": "ready",
+    "started_at": "2026-11-21T15:01:10Z",
+    "ended_at": "2026-11-21T15:31:38Z",
+    "view_url": "https://drive.google.com/file/d/…/view",
+    "provider_file_id": "1AbC…"
+  }],
+  "transcripts": [],
+  "checked_at": "2026-11-21T15:45:02Z"
+}
+```
+
+| `status` | Meaning |
+|---|---|
+| `available` | At least one recording or transcript is ready |
+| `pending` | A call is running, a file is still processing, or the meeting ended under an hour ago and a file may still appear. Check again later |
+| `none` | Nothing was recorded. `reason` is `not_recorded_or_not_permitted` (nobody recorded, or the account cannot record; Google Meet cannot tell which) or `processing_timeout` (a file was still processing 24 hours after the meeting) |
+| `unsupported` | This provider has no recordings or transcripts read (`capabilities.artifacts` is `null`) |
+
+- **Links only.** The runtime never downloads, stores or passes on a
+  recording or transcript. Open `view_url` in a browser. Who can open it
+  follows the organizer's own sharing rules at the provider (for Google Meet,
+  their Drive: the organizer, the person who recorded and people in their
+  organization by default; anyone else sees "request access").
+- A `state` of `processing` has no `view_url` yet.
+- Stop checking once `final` is `true`; a final answer never changes. Until
+  then, check every few minutes. The runtime asks the provider at most once a
+  minute per meeting and answers from its last read in between.
+- `stale: true` means the provider could not be asked just now (rate limit,
+  outage, or the connection is not active) and this is the last answer read.
+  With nothing read before, the read answers `429 meetings.rate_limited`
+  (honor `Retry-After`), `409 meetings.connection_not_active` or
+  `503 meetings.provider_unavailable`.
+- A meeting still `creating`, or `failed`, answers
+  `409 meetings.meeting_not_started`. If the tenant reconnected another
+  account, the read answers `409 meetings.account_changed`.
+- At most the 10 newest calls of one meeting are listed.
+
 ## Google Meet
 
 | Capability | Value |
@@ -199,6 +253,7 @@ for meetings created before updates shipped), and `update_in_progress`.
 | `access_levels` | `open`, `trusted`, `restricted` |
 | `link_revocable` | `false` |
 | `personal_accounts` | `true` |
+| `artifacts` | `recordings`, `transcripts`, `view_links` all `true` |
 
 - A Meet link is not a calendar event: `title`, `start`, `end` and
   `timezone` are accepted and reported in `fields_ignored`. Put the
@@ -218,6 +273,12 @@ for meetings created before updates shipped), and `update_in_progress`.
   (`link_revocable: false`).
 - The tenant connects a Google account (Workspace or personal) with the
   Meet scope; the runtime only creates, reads and ends spaces it made.
+- Recordings and transcripts exist only when someone pressed Record or
+  turned on transcripts in the call, on an account that allows it (many
+  Google Workspace editions and some Google One plans). A personal account
+  that cannot record always ends `none`. Recordings are Drive files and
+  transcripts are Google Docs in the organizer's Drive; Google can take a
+  while (sometimes hours) to finish one. No extra Google consent is needed.
 - A create or end Google did not confirm (timeout, 5xx, 429) is never sent
   again. The operation fails with `meetings.create_uncertain` (the meeting is
   `failed`; create again with a new key; the link of any space Google made is
@@ -233,6 +294,7 @@ for meetings created before updates shipped), and `update_in_progress`.
 | `access_levels` | `open`, `trusted`, `restricted` |
 | `link_revocable` | `false` |
 | `personal_accounts` | `false` |
+| `artifacts` | `null` (the read answers `unsupported` for now) |
 
 - The meeting is a Teams online meeting (not a calendar event): `title` is
   its subject and `start`/`end` its times. `timezone` is reported in
@@ -280,8 +342,9 @@ for meetings created before updates shipped), and `update_in_progress`.
 | 409 `meetings.meeting_not_active` | Nothing to update or end |
 | 409 `meetings.update_in_progress` | Another update of this meeting is in flight; retry once it finishes |
 | 409 `meetings.update_superseded` | This update was never sent and another write took the meeting; send it again with a new key |
-| 409 `meetings.account_changed` | The tenant reconnected another account; reconnect the account that created the meeting to end it |
-| 429 `meetings.rate_limited` | Wait for `Retry-After`, then retry with the same key |
+| 409 `meetings.account_changed` | The tenant reconnected another account; reconnect the account that created the meeting to update, end or read it |
+| 409 `meetings.meeting_not_started` | The meeting's create is in flight or failed; nothing to read yet |
+| 429 `meetings.rate_limited` | Wait for `Retry-After`, then retry (with the same key for a write) |
 | 503 `meetings.state_unavailable` | Retry with the same key |
 | 400 (validation) | Fix the request body |
 
@@ -320,4 +383,11 @@ $op = $meetings->update($tenantId, $connectionId, "appointment:{$id}:update:{$ve
     'start' => '2026-11-21T10:00:00-05:00',
     'end' => '2026-11-21T10:30:00-05:00',
 ]);
+
+// After the meeting (e.g. a scheduled job every few minutes until final).
+$a = $meetings->artifacts($tenantId, $connectionId, $meetingRef);
+foreach ($a['recordings'] as $r) {
+    if ($r['state'] === 'ready') { /* store $r['view_url'] on the appointment */ }
+}
+$done = $a['final'];
 ```

@@ -4,6 +4,10 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- `IntegrationRuntime::meetings()->artifacts($tenantId, $connectionId, $meetingRef)`
+  (from the PHP SDK): a meeting's recording and transcript links after it.
+  See `docs/meetings.md` "After the meeting".
+
 - `docs/meetings.md` covers updating a meeting (`meetings()->update(...)`),
   per-provider `updatable_fields`, `meetings.update_in_progress`,
   `meetings.update_uncertain` and Teams time semantics.

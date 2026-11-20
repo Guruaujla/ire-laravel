@@ -150,9 +150,10 @@ Rules that apply to all of them:
 ### Retainers and wallets
 
 **Rolling out.** The `accounting.prepayment.*` operations are in the contract
-and the SDKs. QuickBooks `prepayment.create`, `prepayment.apply` and
-`prepayment.unapply` are built and stay disabled until each is qualified and
-enabled for your app (`422 accounting.operation_disabled` until then). The other operations, and every Xero one, answer `422
+and the SDKs. `prepayment.create`, `prepayment.apply` and `prepayment.unapply`
+are built for QuickBooks and Xero and stay disabled until each is qualified
+and enabled for your app (`422 accounting.operation_disabled` until then).
+`prepayment.refund` and `prepayment.void` answer `422
 accounting.capability_unsupported` with `reason` `not_offered_yet` until their
 provider writes ship. `GET .../capabilities` shows what is available. Until
 then, keep wallet top-ups in your ERP and sync them later (their dates are
@@ -194,15 +195,27 @@ recorded on the real invoice; applying the prepayment settles it.
   (Settings, Account and settings, Advanced, Automation). We recommend it off
   for every wallet user. The capability feature `prepayment.auto_apply_credit`
   says the connection reports these automatic applications.
-- **Application date.** Xero records it (it may move it to the invoice date);
-  QuickBooks has none, and the prepayment keeps its own date.
+- **Application date.** Xero records it: `application.date`, or when you
+  send none, the later of the invoice and prepayment dates (Xero moves an
+  earlier date to the later one). The result's `application.date` is the date
+  Xero stored. QuickBooks has none, and the prepayment keeps its own date.
+- **Xero.** A prepayment is an overpayment into the mapped `deposit_account`
+  (required), with `reference` as its Reference; `payment_method` and
+  `private_note` are accepted and ignored. `apply` allocates a prepayment
+  written through this API to an invoice written through this API; `unapply`
+  deletes that allocation. If Xero no longer holds the allocation, nothing is
+  written and the result's `application.amount` is `0.00`. Only one apply or
+  unapply per prepayment runs at a time.
 - **Result.** A prepayment result carries `total_amount`, `remaining` (credit
   not yet applied) and `applications` (`invoice_provider_id`, `amount`) as the
   provider holds them, with `document_type` `prepayment`. An `apply` or
   `unapply` result has `document_type` `prepayment_application`, with
   `application` (`amount`, and `auto_applied_amount`: the part QuickBooks had
   already applied by itself), `prepayment` (`erp_id`, `provider_id`) and the
-  invoice it touched.
+  invoice it touched. Its `provider_id` is the prepayment's for QuickBooks and
+  Xero's AllocationID for Xero. `GET .../documents/prepayment/{erp_id}`
+  refreshes a prepayment from either provider; its `balance` is the credit not
+  yet applied.
 - **Application ids are never reused.** An application id names one
   application for good. To apply again after an `unapply`, send a new
   application id; an `unapply` refused for good can be retried under a new
@@ -641,8 +654,9 @@ refuses the write if they differ from your `after.totals`.
 
 Other reads:
 
-- `GET …/documents/{invoice|payment}/{erp_id}?tenant_id=…` re-reads the
-  provider: current `revision`, `status`, `total_amount`, `balance`. For an
+- `GET …/documents/{invoice|payment|prepayment}/{erp_id}?tenant_id=…` re-reads the
+  provider: current `revision`, `status`, `total_amount`, `balance` (for a
+  prepayment, the credit not yet applied). For an
   invoice it also returns `net_amount`, `total_tax` and `tax_lines` from that
   read (`tax_lines` is `null` when a rate on the invoice is not mapped to an
   ERP tax code), so you can backfill `before.totals` for invoices created
@@ -800,9 +814,14 @@ invoices; void the invoice instead) and answers the same.
 - `accounting.credit_memo.create` → `xero.credit_note.create`
 - `accounting.credit_memo.apply` → `xero.credit_note.allocate`
 - `accounting.refund.create` → `xero.refund.create`
+- `accounting.prepayment.create` → `xero.prepayment.create` (an overpayment;
+  see [Retainers and wallets](#retainers-and-wallets))
+- `accounting.prepayment.apply` → `xero.prepayment.allocate`
+- `accounting.prepayment.unapply` → `xero.prepayment.allocation.delete`
 
-The native Xero invoice, payment, credit note and refund operations are
-reachable only through this API: `POST /v1/operations/execute` refuses them.
+The native Xero invoice, payment, credit note, refund and prepayment
+operations are reachable only through this API: `POST /v1/operations/execute`
+refuses them.
 
 ### Limits
 

@@ -8,6 +8,10 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
   per-provider `updatable_fields`, `meetings.update_in_progress`,
   `meetings.update_uncertain` and Teams time semantics.
 
+- `docs/accounting-operations.md` documents Xero prepayment create, apply and
+  unapply (built, disabled until qualified), the Xero application date and
+  the prepayment document refresh.
+
 - `docs/accounting-operations.md` documents QuickBooks prepayment apply and
   unapply (built, disabled until qualified) and recommends turning off
   QuickBooks "Automatically apply credits" for wallet users. An

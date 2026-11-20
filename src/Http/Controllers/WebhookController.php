@@ -10,6 +10,7 @@ use Ezee\IntegrationRuntime\Jobs;
 use Ezee\IntegrationRuntime\Laravel\Events\AccountingDocumentStatusChanged;
 use Ezee\IntegrationRuntime\Laravel\Events\ConnectionReconnectRequired;
 use Ezee\IntegrationRuntime\Laravel\Events\ConnectionStatusChanged;
+use Ezee\IntegrationRuntime\Laravel\Events\MeetingArtifactsReady;
 use Ezee\IntegrationRuntime\Laravel\Events\Factory;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookReceived;
 use Ezee\IntegrationRuntime\Laravel\Events\WebhookTestReceived;
@@ -83,6 +84,10 @@ final class WebhookController
                 if ($event->eventType === 'connection.reconnect_required') {
                     $events->dispatch(ConnectionReconnectRequired::fromWebhook($event));
                 }
+            }
+            // A literal too: older SDKs accept it as an unknown type.
+            if ($event->eventType === 'meeting.artifacts_ready') {
+                $events->dispatch(MeetingArtifactsReady::fromWebhook($event));
             }
             if ($event->eventType === 'webhook.test') {
                 $data = $event->payload['data'] ?? null;

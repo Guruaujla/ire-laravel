@@ -7,6 +7,7 @@ namespace Ezee\IntegrationRuntime\Laravel\Tests;
 use Ezee\IntegrationRuntime\Laravel\Events\AccountingDocumentStatusChanged;
 use Ezee\IntegrationRuntime\Laravel\Events\ConnectionReconnectRequired;
 use Ezee\IntegrationRuntime\Laravel\Events\ConnectionStatusChanged;
+use Ezee\IntegrationRuntime\Laravel\Events\MeetingArtifactsReady;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobCompleted;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobDeadLettered;
 use Ezee\IntegrationRuntime\Laravel\Events\SyncJobResolved;
@@ -170,6 +171,52 @@ final class WebhookTest extends TestCase
         Event::assertDispatched(ConnectionStatusChanged::class, fn(ConnectionStatusChanged $e) => $e->status === 'connected' && $e->previousStatus === null);
         Event::assertDispatched(ConnectionStatusChanged::class, fn(ConnectionStatusChanged $e) => $e->status === 'disconnected' && $e->reason === 'disconnect');
         Event::assertNotDispatched(ConnectionReconnectRequired::class);
+    }
+
+    public function test_meeting_artifacts_ready_fires_its_event_without_a_read(): void
+    {
+        $this->fakeRuntime(); // any runtime call would fail the test
+        Event::fake();
+        $recording = [
+            'artifact_id' => 'conferenceRecords/a/recordings/r', 'state' => 'ready',
+            'started_at' => '2026-11-21T15:01:10Z', 'ended_at' => '2026-11-21T15:31:38Z',
+            'view_url' => 'https://drive.google.com/file/d/1AbC/view', 'provider_file_id' => '1AbC',
+        ];
+        $body = json_encode([
+            'schema_version' => 1,
+            'delivery_id' => 'dlv_meet_1',
+            'event_id' => 'mtg_1:artifacts:final',
+            'event_type' => 'meeting.artifacts_ready',
+            'occurred_at' => '2026-11-21T15:45:02.000Z',
+            'app_id' => 'app_erp',
+            'tenant_id' => 'tnt_1',
+            'data' => ['meeting' => [
+                'meeting_ref' => 'mtg_1', 'external_ref' => 'APPT-7', 'connection_id' => 'conn_1',
+                'provider_key' => 'google-meet', 'stage' => 'final', 'status' => 'available',
+                'reason' => null, 'final' => true, 'recordings' => [$recording], 'transcripts' => [],
+                'checked_at' => '2026-11-21T15:45:02.000Z',
+            ]],
+        ], JSON_THROW_ON_ERROR);
+        $this->deliver($body)->assertOk();
+        $this->deliver($body)->assertOk(); // redelivery, same delivery_id
+
+        Event::assertDispatchedTimes(MeetingArtifactsReady::class, 1);
+        Event::assertDispatched(MeetingArtifactsReady::class, fn(MeetingArtifactsReady $e) => $e->tenantId === 'tnt_1'
+            && $e->connectionId === 'conn_1'
+            && $e->meetingRef === 'mtg_1'
+            && $e->externalRef === 'APPT-7'
+            && $e->providerKey === 'google-meet'
+            && $e->stage === 'final'
+            && $e->status === 'available'
+            && $e->reason === null
+            && $e->final === true
+            && $e->recordings === [$recording]
+            && $e->transcripts === []
+            && $e->event->meetingRef() === 'mtg_1'
+            && $e->event->meetingArtifactsStage() === 'final'
+            && $e->event->connectionId() === 'conn_1');
+        Event::assertNotDispatched(ConnectionStatusChanged::class);
+        Event::assertNotDispatched(SyncJobCompleted::class);
     }
 
     public function test_the_test_event_is_acknowledged_and_fires_its_event(): void

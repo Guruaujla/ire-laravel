@@ -37,16 +37,17 @@ Owners add webhooks on the app page in the Console (**Webhooks**):
   disabled until at least one event is ticked. Ticked by default:
   `sync_job.completed`, `sync_job.dead_lettered`, `sync_job.resolved` and
   `accounting.document.status_changed`. `quickbooks.transaction.status_changed`
-  and the three opt-in [connection events](#connection) (`connection.connected`,
-  `connection.reconnect_required`, `connection.disconnected`) are offered but
-  not ticked. The reserved `sync_job.failed` is not offered.
+  the three opt-in [connection events](#connection) (`connection.connected`,
+  `connection.reconnect_required`, `connection.disconnected`) and the opt-in
+  [`meeting.artifacts_ready`](#meetingartifacts_ready) are offered but not
+  ticked. The reserved `sync_job.failed` is not offered.
 
 A webhook with **no filter** (every event type except the explicit-only ones,
 below) is never created by the Console's form. It exists only when it was
 registered without an event list through the Console's API, carried over by an
 import from the Sandbox, or set up by the runtime team. The Console shows its events as "All events except
 accounting.document.status_changed, connection.connected,
-connection.reconnect_required, connection.disconnected".
+connection.reconnect_required, connection.disconnected, meeting.artifacts_ready".
 
 An app can have up to 5 webhooks that are active or paused. The page shows the signing **secret** once, in
 the `.env` block (`INTEGRATION_RUNTIME_WEBHOOK_SECRET`). It is 32 random bytes
@@ -151,13 +152,16 @@ receiver then answers `200` and fires `WebhookReceived`. From Laravel package
 | `connection.connected` | A connection became connected: the first connect, a reconnect, or a recovery. | **No: explicit-only** |
 | `connection.reconnect_required` | A connection's provider authorization stopped working. The customer must [reconnect](#reconnect-a-customer). | **No: explicit-only** |
 | `connection.disconnected` | A connection that had been connected was disconnected. | **No: explicit-only** |
+| `meeting.artifacts_ready` | A meeting's recording or transcript links are ready (stage `available`), or its answer stopped changing (stage `final`). | **No: explicit-only** |
 | `webhook.test` | An owner sent a [test event](#send-a-test-event) to this one webhook. **Not subscribable**: not offered in the Console and refused at registration. | **No: never subscribed** |
 
-**Explicit-only.** `accounting.document.status_changed` and the three
-`connection.*` events are sent only to webhooks whose event list names them. A
+**Explicit-only.** `accounting.document.status_changed`, the three
+`connection.*` events and `meeting.artifacts_ready` are sent only to webhooks
+whose event list names them. A
 webhook with no filter never receives them, so adding them did not change what
 existing receivers get. The Console ticks `accounting.document.status_changed`
-by default for a new webhook; the `connection.*` events are opt-in.
+by default for a new webhook; the `connection.*` events and
+`meeting.artifacts_ready` are opt-in.
 
 A webhook with no filter receives every other event type, and may receive event
 types added in a later release. Verify the signature, then answer `2xx` and
@@ -363,6 +367,80 @@ from 1.3.3 accept the deliveries (answer `200`) but fire only
   `connection.connected` after a reconnect before the `connection.reconnect_required`
   that preceded it. Read `GET /v1/connections/{id}` and act on its `status`, not
   on the event.
+
+
+### `meeting.artifacts_ready`
+
+A meeting's recording and transcript links (schema
+`MeetingArtifactsWebhookPayload`). At most two per meeting: stage `available`
+when a recording or transcript is first ready and more may still follow, and
+stage `final` when the answer stops changing. A meeting already final when it
+is first checked gets only `final`. The event id is
+`<meeting_ref>:artifacts:<stage>`; dedupe on `delivery_id` as usual.
+
+```json
+{
+  "schema_version": 1,
+  "delivery_id": "0190d3e1-5a22-7b10-9c40-2f3e4a5b6c7d",
+  "event_id": "6f1c…:artifacts:final",
+  "event_type": "meeting.artifacts_ready",
+  "occurred_at": "2026-11-21T15:45:02.118Z",
+  "app_id": "app_example",
+  "tenant_id": "tnt_example_1",
+  "data": {
+    "meeting": {
+      "meeting_ref": "6f1c…",
+      "external_ref": "APPT-1042",
+      "connection_id": "conn_example_1",
+      "provider_key": "google-meet",
+      "stage": "final",
+      "status": "available",
+      "reason": null,
+      "final": true,
+      "recordings": [{
+        "artifact_id": "conferenceRecords/…/recordings/…",
+        "state": "ready",
+        "started_at": "2026-11-21T15:01:10Z",
+        "ended_at": "2026-11-21T15:31:38Z",
+        "view_url": "https://drive.google.com/file/d/…/view",
+        "provider_file_id": "1AbC…"
+      }],
+      "transcripts": [],
+      "checked_at": "2026-11-21T15:45:02.118Z"
+    }
+  }
+}
+```
+
+`data.meeting` (schema `MeetingArtifactsWebhookSnapshot`):
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `meeting_ref` | string | The meeting. `GET /v1/meetings/connections/{connection_id}/meetings/{meeting_ref}/artifacts` for the current answer. |
+| `external_ref` | string | Your own reference for the meeting. |
+| `connection_id`, `provider_key` | string | The meeting's connection and provider, for example `google-meet`. |
+| `stage` | string | `available` (more may follow) or `final`. More values may be added. |
+| `status` | string | `available` (at least one file is ready) or `none` (nothing was recorded; only with stage `final`). |
+| `reason` | string or null | Why `none`: `not_recorded_or_not_permitted` or `processing_timeout`. |
+| `final` | boolean | True when the answer will not change. |
+| `recordings`, `transcripts` | array | The same items the artifacts read returns: links and times only. |
+| `checked_at` | string | When the provider was asked for this answer. |
+
+- **Links only.** Who can open a `view_url` follows the organizer's own
+  sharing rules at the provider. See [Meetings: After the meeting](meetings.md#after-the-meeting).
+- **No polling needed.** The runtime checks meetings in the background: ended
+  meetings, and active ones whose scheduled end has passed, for 24 hours (5,
+  10, 20 and 40 minutes apart, then hourly). An artifacts read you make
+  yourself can also send the event. After 24 hours only your own reads check.
+- **Latency.** Usually within about five minutes of the provider having the
+  file, plus delivery time. Google can take hours to process a recording.
+- **Not kept.** An event recorded while no active webhook wants it is not
+  sent later; read the meeting instead.
+
+**PHP and Laravel:** SDK 1.13.0 puts `data.meeting` on `WebhookEvent::$meeting`
+(`meetingRef()`, `meetingArtifactsStage()`); Laravel package 1.13.0 fires
+`MeetingArtifactsReady`. Earlier versions from 1.3.3 accept the deliveries
+(answer `200`) but fire only `WebhookReceived`.
 
 ## Reconnect a customer
 

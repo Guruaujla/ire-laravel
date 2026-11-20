@@ -4,12 +4,18 @@ Releases are published to `Guruaujla/ire-laravel` as `v` tags.
 
 ## Unreleased
 
+- New event `MeetingArtifactsReady`, fired for a verified `meeting.artifacts_ready`
+  delivery (opt-in: list the event on the webhook): `tenantId`, `connectionId`,
+  `meetingRef`, `externalRef`, `providerKey`, `stage` (`available` or `final`),
+  `status`, `reason`, `final`, `recordings`, `transcripts`. See
+  `docs/webhooks.md` "meeting.artifacts_ready".
 - `docs/accounting-operations.md` documents the Xero connection scopes
   (`accounting.banktransactions` added for prepayments), the new
   `accounting.reconnect_required` (409, `decision()` `fix_setup`) and
   capability reason `reconnect_required` for a Xero connection consented
   before it, and a first-send Xero 401/403 on a prepayment write as a
   definite refusal (`provider_detail` `xero.authorisation_refused`).
+
 - `IntegrationRuntime::meetings()->artifacts($tenantId, $connectionId, $meetingRef)`
   (from the PHP SDK): a meeting's recording and transcript links after it.
   See `docs/meetings.md` "After the meeting".

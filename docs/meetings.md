@@ -244,6 +244,15 @@ started and ended:
   account, the read answers `409 meetings.account_changed`.
 - At most the 10 newest calls of one meeting are listed.
 
+### Get told instead of polling
+
+Subscribe a webhook to the opt-in event
+[`meeting.artifacts_ready`](webhooks.md#meetingartifacts_ready). The runtime
+checks meetings in the background (ended meetings, and active ones whose
+scheduled end has passed, for 24 hours) and sends at most two events per
+meeting: stage `available` when a file is first ready, and stage `final` when
+the answer stops changing. Each carries the same links as the read above.
+
 ## Google Meet
 
 | Capability | Value |
@@ -384,10 +393,24 @@ $op = $meetings->update($tenantId, $connectionId, "appointment:{$id}:update:{$ve
     'end' => '2026-11-21T10:30:00-05:00',
 ]);
 
-// After the meeting (e.g. a scheduled job every few minutes until final).
+// After the meeting: listen for MeetingArtifactsReady (webhook event
+// meeting.artifacts_ready), or read it yourself (e.g. a scheduled job every
+// few minutes until final).
 $a = $meetings->artifacts($tenantId, $connectionId, $meetingRef);
 foreach ($a['recordings'] as $r) {
     if ($r['state'] === 'ready') { /* store $r['view_url'] on the appointment */ }
 }
 $done = $a['final'];
+```
+
+```php
+use Ezee\IntegrationRuntime\Laravel\Events\MeetingArtifactsReady;
+use Illuminate\Support\Facades\Event;
+
+Event::listen(function (MeetingArtifactsReady $e) {
+    // $e->stage is 'available' (more may follow) or 'final'; $e->status 'available' or 'none'.
+    foreach ($e->recordings as $r) {
+        if ($r['state'] === 'ready') { /* store $r['view_url'] on appointment $e->externalRef */ }
+    }
+});
 ```
